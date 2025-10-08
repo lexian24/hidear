@@ -36,19 +36,23 @@ class SpeakerDiarizer:
             auth_token = os.getenv("HUGGINGFACE_TOKEN")
             
             # Load the pretrained pipeline
-            if self.use_auth_token and auth_token:
+            # pyannote.audio 3.x uses use_auth_token parameter
+            try:
+                self.pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    use_auth_token=auth_token if auth_token else True
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load latest model: {e}")
+                logger.info("Trying older model version...")
                 try:
                     self.pipeline = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        use_auth_token=auth_token
+                        "pyannote/speaker-diarization",
+                        use_auth_token=auth_token if auth_token else True
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to load latest model with token: {e}")
-                    logger.info("Trying fallback model...")
-                    self.pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization")
-            else:
-                # Use publicly available model
-                self.pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization")
+                except Exception as e2:
+                    logger.error(f"Failed to load any diarization model: {e2}")
+                    raise
             
             # Move to GPU if available
             if torch.cuda.is_available():

@@ -373,10 +373,10 @@ class SpeakerIdentifier:
             
             result = {
                 'identified_speaker': best_speaker,
-                'confidence': confidence,
-                'similarity_score': best_score,
-                'all_scores': speaker_scores,
-                'quality_metrics': quality_metrics,
+                'confidence': float(confidence) if confidence is not None else 0.0,
+                'similarity_score': float(best_score) if best_score is not None else 0.0,
+                'all_scores': {k: float(v) if isinstance(v, (int, float, np.floating, np.integer)) else v for k, v in speaker_scores.items()} if speaker_scores else {},
+                'quality_metrics': quality_metrics,  # Already returns native Python floats
                 'status': 'identified' if best_speaker else 'not_identified'
             }
             

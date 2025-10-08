@@ -1,0 +1,65 @@
+# MERaLiON Worker Dockerfile
+# Separate container with specific dependencies for MERaLiON-10B
+# Requires NVIDIA GPU with CUDA 12.1+
+
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    git \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.10 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
+    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first (for layer caching)
+COPY requirements.meralion.txt .
+
+# Install PyTorch with CUDA 12.4 support (required by flash-attn)
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# Install remaining Python dependencies (excluding flash-attn)
+RUN pip install --no-cache-dir transformers==4.50.1 vllm==0.6.5 vllm-plugin-meralion2 \
+    librosa>=0.10.0 soundfile>=0.12.1 numpy>=1.24.0 \
+    fastapi>=0.104.0 uvicorn[standard]>=0.24.0 pydantic>=2.0.0 \
+    requests>=2.31.0 python-dotenv>=1.0.0
+
+# Install flash-attn last (needs PyTorch already installed)
+RUN pip install --no-cache-dir --no-build-isolation flash-attn
+
+# Copy service code
+COPY services/meralion_service.py services/
+COPY meralion_worker.py .
+
+# Create directories for model cache and audio
+RUN mkdir -p /app/models /app/audio_files
+
+# Expose port
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8001/health')" || exit 1
+
+# Run MERaLiON worker
+CMD ["python", "meralion_worker.py"]

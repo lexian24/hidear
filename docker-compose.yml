@@ -2,9 +2,9 @@ services:
   # Redis - Message broker for Celery
   redis:
     image: redis:7-alpine
-    container_name: fastaudio-redis
+    container_name: meraudio-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-7293}:6379"  # External: 7293, Internal: 6379
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -14,20 +14,132 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - meraudio-network
+
+  # MERaLiON Worker - Transcription + Emotion (GPU required)
+  meralion:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.meralion
+    container_name: meraudio-meralion
+    environment:
+      - MERALION_MODEL=${MERALION_MODEL:-MERaLiON/MERaLiON-2-10B}
+      - MERALION_PORT=${MERALION_INTERNAL_PORT:-8001}
+      - HF_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
+      - HF_TOKEN=${HF_TOKEN}
+      - CUDA_VISIBLE_DEVICES=${GPU_ID:-0}
+    volumes:
+      - ./backend/audio_files:/app/audio_files
+      - meralion_models:/app/models
+    ports:
+      - "${MERALION_PORT:-9428}:${MERALION_INTERNAL_PORT:-8001}"
+    networks:
+      - meraudio-network
+    # Podman GPU access via device mapping
+    devices:
+      - nvidia.com/gpu=all
+    security_opt:
+      - label=disable
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${MERALION_INTERNAL_PORT:-8001}/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: meraudio-backend
+    volumes:
+      - ./backend:/app
+      - ./backend/audio_files:/app/audio_files
+      - ./backend/speaker_profiles:/app/speaker_profiles
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MERALION_SERVICE_URL=http://meralion:${MERALION_INTERNAL_PORT:-8001}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./meraudio.db}
+      - HF_TOKEN=${HF_TOKEN}
+      - PORT=${BACKEND_INTERNAL_PORT:-8000}
+    ports:
+      - "${BACKEND_PORT:-9427}:${BACKEND_INTERNAL_PORT:-8000}"  # External: 9427, Internal: 8000
+    depends_on:
+      redis:
+        condition: service_healthy
+      meralion:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - meraudio-network
+
+  # Celery Worker - Diarization + Speaker ID
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.celery
+    container_name: meraudio-celery
+    volumes:
+      - ./backend:/app
+      - ./backend/audio_files:/app/audio_files
+      - ./backend/speaker_profiles:/app/speaker_profiles
+      - celery_models:/app/models
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - MERALION_SERVICE_URL=http://meralion:${MERALION_INTERNAL_PORT:-8001}
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
+    depends_on:
+      redis:
+        condition: service_healthy
+      meralion:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - meraudio-network
 
   # Optional: Redis Commander (GUI for Redis)
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: fastaudio-redis-commander
+    container_name: meraudio-redis-commander
     environment:
       - REDIS_HOSTS=local:redis:6379
     ports:
-      - "8081:8081"
+      - "${REDIS_COMMANDER_PORT:-9429}:8081"  # External: 9429, Internal: 8081
     depends_on:
       - redis
+    networks:
+      - meraudio-network
     profiles:
       - tools  # Only start with: docker-compose --profile tools up
+
+  # Optional: Frontend (if exists)
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: meraudio-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - backend
+  #   restart: unless-stopped
+  #   networks:
+  #     - meraudio-network
 
 volumes:
   redis_data:
     driver: local
+  meralion_models:
+    driver: local
+  celery_models:
+    driver: local
+
+networks:
+  meraudio-network:
+    driver: bridge

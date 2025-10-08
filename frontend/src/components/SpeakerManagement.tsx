@@ -27,7 +27,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
   });
   const [enrolling, setEnrolling] = useState(false);
 
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = ''; // Use relative URLs to go through nginx proxy
 
   useEffect(() => {
     fetchSpeakers();

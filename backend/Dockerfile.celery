@@ -1,0 +1,41 @@
+# Celery Worker Dockerfile
+# For diarization and speaker identification tasks
+# Uses flexible transformers version (compatible with pyannote/speechbrain)
+
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements (excluding MERaLiON-specific)
+COPY backend/requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/ .
+
+# Create necessary directories
+RUN mkdir -p /app/audio_files /app/models /app/speaker_profiles /app/logs
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Run Celery worker
+CMD ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=2"]

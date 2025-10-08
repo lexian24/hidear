@@ -22,6 +22,8 @@ data/*.db
 # Recordings and uploads
 recordings/
 uploads/
+audio_files/
+speaker_profiles/
 *.wav
 *.mp3
 *.m4a

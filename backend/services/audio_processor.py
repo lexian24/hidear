@@ -10,9 +10,8 @@ import numpy as np
 import tempfile
 import os
 
-from .whisper_transcription import WhisperTranscriber
+from .meralion_client import MERaLiONClient
 from .diarization import SpeakerDiarizer
-from .emotion_recognition import EmotionRecognizer
 from .speaker_identification import SpeakerIdentifier
 
 # Suppress common audio processing warnings
@@ -27,22 +26,20 @@ class AudioProcessor:
     """
     Complete post-processing audio pipeline:
     1. Speaker diarization (pyannote identifies speakers)
-    2. Whisper transcription (per speaker segment) 
-    3. Emotion recognition (per speaker segment)
-    4. Segment merging (consecutive same-speaker segments)
+    2. MERaLiON-10B transcription + emotion (per speaker segment)
+    3. Segment merging (consecutive same-speaker segments)
     """
-    
+
     def __init__(self):
         logger.info("Initializing audio processing components...")
-        
+
         # Initialize components
-        self.transcriber = WhisperTranscriber()
+        self.meralion = MERaLiONClient()  # Replaces Whisper + Emotion
         self.diarizer = SpeakerDiarizer()
-        self.emotion_recognizer = EmotionRecognizer()
-        
+
         # Initialize speaker identifier (lazy loading)
         self.speaker_identifier = None
-        
+
         logger.info("All audio processing components loaded")
     
     def _get_speaker_identifier(self):
@@ -89,26 +86,25 @@ class AudioProcessor:
             merged_segments = self._merge_consecutive_speaker_segments(segments)
             logger.info(f"Merged {len(segments)} segments into {len(merged_segments)} continuous speaker blocks")
             
-            # Step 4: Transcribe and analyze merged segments
-            logger.info("Transcribing merged segments...")
+            # Step 4: Transcribe and analyze merged segments using MERaLiON
+            logger.info("Transcribing and analyzing merged segments with MERaLiON...")
             final_segments = []
-            
+
             for i, segment in enumerate(merged_segments):
-                # Transcribe the entire merged segment
-                text = self.transcriber.transcribe_segment(
+                # Transcribe the entire merged segment using MERaLiON
+                text = self.meralion.transcribe_segment(
                     audio_path,
                     segment['start_time'],
                     segment['end_time']
                 )
-                
-                # Analyze emotion for the entire merged segment
-                emotion, confidence = self.emotion_recognizer.predict_emotion(
+
+                # Analyze emotion for the entire merged segment using MERaLiON
+                emotion, confidence = self.meralion.predict_emotion(
                     audio_path,
                     segment['start_time'],
-                    segment['end_time'],
-                    text
+                    segment['end_time']
                 )
-                
+
                 final_segments.append({
                     'start_time': segment['start_time'],
                     'end_time': segment['end_time'],
@@ -119,7 +115,7 @@ class AudioProcessor:
                     'duration': segment['end_time'] - segment['start_time'],
                     'original_segment_count': segment.get('segment_count', 1)
                 })
-                
+
                 logger.info(f"Processed speaker {segment['speaker_id']}: {len(text)} chars, emotion: {emotion}")
             
             # Step 5: Generate speaker summary
@@ -417,8 +413,7 @@ class AudioProcessor:
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about loaded models"""
         return {
-            'transcription': self.transcriber.get_info(),
+            'meralion': self.meralion.get_info(),
             'diarization': self.diarizer.get_info(),
-            'emotion': self.emotion_recognizer.get_info(),
-            'pipeline': 'post_processing: diarization → transcription → emotion'
+            'pipeline': 'post_processing: diarization → MERaLiON (transcription + emotion)'
         }

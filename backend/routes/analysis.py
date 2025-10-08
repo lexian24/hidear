@@ -66,12 +66,12 @@ async def analyze_audio(
             final_filename = f"upload_{timestamp}.wav"
             needs_conversion = True
 
-        # Create recordings directory
-        recordings_dir = Path("recordings")
-        recordings_dir.mkdir(exist_ok=True)
+        # Create audio_files directory (shared with MERaLiON container)
+        audio_files_dir = Path("audio_files")
+        audio_files_dir.mkdir(exist_ok=True)
 
-        temp_path = recordings_dir / temp_filename
-        final_path = recordings_dir / final_filename
+        temp_path = audio_files_dir / temp_filename
+        final_path = audio_files_dir / final_filename
 
         # Save temporary file
         with open(temp_path, 'wb') as f:

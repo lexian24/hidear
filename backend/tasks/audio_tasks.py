@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 from collections import Counter
+import numpy as np
 
 from celery import Task
 from celery_app import celery_app
@@ -24,6 +25,21 @@ from database.models import ProcessingTask, Recording
 from database.services import DatabaseService
 
 logger = logging.getLogger(__name__)
+
+
+def convert_to_native_types(obj):
+    """Recursively convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: convert_to_native_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_native_types(item) for item in obj]
+    elif isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
 
 
 class CallbackTask(Task):
@@ -122,7 +138,7 @@ def process_audio_file(
         if result.get('segments'):
             confidences = [seg.get('confidence', 0) for seg in result['segments'] if seg.get('confidence')]
             if confidences:
-                confidence_score = sum(confidences) / len(confidences)
+                confidence_score = float(sum(confidences) / len(confidences))
 
         # Extract emotion data
         emotions_data = None
@@ -140,20 +156,20 @@ def process_audio_file(
                     if seg.get('emotion') == dominant_emotion
                 ]
                 if emotion_confidences:
-                    emotion_confidence = sum(emotion_confidences) / len(emotion_confidences)
+                    emotion_confidence = float(sum(emotion_confidences) / len(emotion_confidences))
 
                 emotions_data = {
                     'dominant_emotion': dominant_emotion,
                     'emotion_confidence': emotion_confidence,
-                    'all_emotions': dict(emotion_counts)
+                    'all_emotions': convert_to_native_types(dict(emotion_counts))
                 }
 
-        # Prepare diarization data
+        # Prepare diarization data (convert numpy types to native Python types)
         filtered_segments = [seg for seg in result.get('segments', []) if seg.get('text', '').strip()]
         diarization_data = {
             'num_speakers': len(result.get('speakers', [])),
-            'speaker_segments': filtered_segments,
-            'speaker_summary': result.get('speakers', [])
+            'speaker_segments': convert_to_native_types(filtered_segments),
+            'speaker_summary': convert_to_native_types(result.get('speakers', []))
         }
 
         # Create processing result in database (synchronous)
@@ -189,9 +205,9 @@ def process_audio_file(
                 segments_to_save.append({
                     'speaker_id': None,
                     'speaker_label': segment.get('persistent_speaker_name') or segment.get('speaker_id', 'Unknown'),
-                    'start_time': segment.get('start_time', 0),
-                    'end_time': segment.get('end_time', 0),
-                    'confidence': segment.get('confidence', 0),
+                    'start_time': float(segment.get('start_time', 0)),
+                    'end_time': float(segment.get('end_time', 0)),
+                    'confidence': float(segment.get('confidence', 0)),
                     'text': segment_text
                 })
 
@@ -199,8 +215,8 @@ def process_audio_file(
             if segments_to_save:
                 from database.models import SpeakerSegment
                 for seg_data in segments_to_save:
-                    start = seg_data.get('start_time', 0)
-                    end = seg_data.get('end_time', 0)
+                    start = float(seg_data.get('start_time', 0))
+                    end = float(seg_data.get('end_time', 0))
                     speaker_segment = SpeakerSegment(
                         result_id=processing_result.id,
                         speaker_id=seg_data.get('speaker_id'),
@@ -208,7 +224,7 @@ def process_audio_file(
                         start_time=start,
                         end_time=end,
                         duration=end - start,
-                        confidence=seg_data.get('confidence', 0),
+                        confidence=float(seg_data.get('confidence', 0)),
                         segment_text=seg_data.get('text', '')
                     )
                     db.add(speaker_segment)
@@ -221,17 +237,18 @@ def process_audio_file(
             "recording_id": recording_id
         })
 
-        # Update task record with results
+        # Update task record with results (convert numpy types)
         if task_record:
             task_record.status = 'completed'
-            task_record.result_data = result
+            task_record.result_data = convert_to_native_types(result)
             task_record.completed_at = datetime.utcnow()
             task_record.progress = 100
             db.commit()
 
         logger.info(f"✅ Task {task_id} completed successfully in {result['processing_time']:.2f}s")
 
-        return result
+        # Return converted result to avoid Celery serialization errors
+        return convert_to_native_types(result)
 
     except Exception as e:
         logger.error(f"❌ Task {task_id} failed: {e}")
@@ -328,7 +345,7 @@ def process_vad_recording(
         if result.get('segments'):
             confidences = [seg.get('confidence', 0) for seg in result['segments'] if seg.get('confidence')]
             if confidences:
-                confidence_score = sum(confidences) / len(confidences)
+                confidence_score = float(sum(confidences) / len(confidences))
 
         # Extract emotion data
         emotions_data = None
@@ -346,20 +363,20 @@ def process_vad_recording(
                     if seg.get('emotion') == dominant_emotion
                 ]
                 if emotion_confidences:
-                    emotion_confidence = sum(emotion_confidences) / len(emotion_confidences)
+                    emotion_confidence = float(sum(emotion_confidences) / len(emotion_confidences))
 
                 emotions_data = {
                     'dominant_emotion': dominant_emotion,
                     'emotion_confidence': emotion_confidence,
-                    'all_emotions': dict(emotion_counts)
+                    'all_emotions': convert_to_native_types(dict(emotion_counts))
                 }
 
-        # Prepare diarization data
+        # Prepare diarization data (convert numpy types to native Python types)
         filtered_segments = [seg for seg in result.get('segments', []) if seg.get('text', '').strip()]
         diarization_data = {
             'num_speakers': len(result.get('speakers', [])),
-            'speaker_segments': filtered_segments,
-            'speaker_summary': result.get('speakers', [])
+            'speaker_segments': convert_to_native_types(filtered_segments),
+            'speaker_summary': convert_to_native_types(result.get('speakers', []))
         }
 
         # Create processing result in database (synchronous)
@@ -395,9 +412,9 @@ def process_vad_recording(
                 segments_to_save.append({
                     'speaker_id': None,
                     'speaker_label': segment.get('persistent_speaker_name') or segment.get('speaker_id', 'Unknown'),
-                    'start_time': segment.get('start_time', 0),
-                    'end_time': segment.get('end_time', 0),
-                    'confidence': segment.get('confidence', 0),
+                    'start_time': float(segment.get('start_time', 0)),
+                    'end_time': float(segment.get('end_time', 0)),
+                    'confidence': float(segment.get('confidence', 0)),
                     'text': segment_text
                 })
 
@@ -405,8 +422,8 @@ def process_vad_recording(
             if segments_to_save:
                 from database.models import SpeakerSegment
                 for seg_data in segments_to_save:
-                    start = seg_data.get('start_time', 0)
-                    end = seg_data.get('end_time', 0)
+                    start = float(seg_data.get('start_time', 0))
+                    end = float(seg_data.get('end_time', 0))
                     speaker_segment = SpeakerSegment(
                         result_id=processing_result.id,
                         speaker_id=seg_data.get('speaker_id'),
@@ -414,7 +431,7 @@ def process_vad_recording(
                         start_time=start,
                         end_time=end,
                         duration=end - start,
-                        confidence=seg_data.get('confidence', 0),
+                        confidence=float(seg_data.get('confidence', 0)),
                         segment_text=seg_data.get('text', '')
                     )
                     db.add(speaker_segment)
@@ -427,17 +444,18 @@ def process_vad_recording(
             "recording_id": recording_id
         })
 
-        # Update task record with results
+        # Update task record with results (convert numpy types)
         if task_record:
             task_record.status = 'completed'
-            task_record.result_data = result
+            task_record.result_data = convert_to_native_types(result)
             task_record.completed_at = datetime.utcnow()
             task_record.progress = 100
             db.commit()
 
         logger.info(f"✅ Task {task_id} completed successfully in {result['processing_time']:.2f}s")
 
-        return result
+        # Return converted result to avoid Celery serialization errors
+        return convert_to_native_types(result)
 
     except Exception as e:
         logger.error(f"❌ Task {task_id} failed: {e}")

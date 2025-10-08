@@ -58,7 +58,7 @@ const RecordingHistory: React.FC<RecordingHistoryProps> = ({ onRecordingSelect }
   const [deleting, setDeleting] = useState<Set<number>>(new Set());
   const [modalRecording, setModalRecording] = useState<{recording: Recording, result: ProcessingResult} | null>(null);
 
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = ''; // Use relative URLs to go through nginx proxy
 
   useEffect(() => {
     fetchRecordings();

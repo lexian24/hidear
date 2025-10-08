@@ -17,11 +17,14 @@ const StreamingInterface: React.FC<StreamingInterfaceProps> = ({ onBack }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const API_BASE = 'http://localhost:8000';
+  const API_BASE = ''; // Use relative URLs to go through nginx proxy
   
   // Initialize microphone, WebSocket, and continuous recorder hooks
   const microphone = useMicrophone();
-  const vadWebSocket = useVadWebSocket('ws://localhost:8000/ws/vad-stream');
+  // Construct WebSocket URL based on current location (http -> ws, https -> wss)
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${wsProtocol}//${window.location.host}/ws/vad-stream`;
+  const vadWebSocket = useVadWebSocket(wsUrl);
   const continuousRecorder = useContinuousRecorder();
   
   // Recording state management
