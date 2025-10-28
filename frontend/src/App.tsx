@@ -5,9 +5,10 @@ import TranscriptViewer from './components/TranscriptViewer';
 import StreamingInterface from './components/StreamingInterface';
 import SpeakerManagement from './components/SpeakerManagement';
 import RecordingHistory from './components/RecordingHistory';
+import ReviewQueue from './components/ReviewQueue';
 import { AudioAnalysisResult } from './types/audio';
 
-type ViewMode = 'upload' | 'streaming' | 'speakers' | 'history';
+type ViewMode = 'upload' | 'streaming' | 'speakers' | 'history' | 'review';
 
 function App() {
   const [analysisResult, setAnalysisResult] = useState<AudioAnalysisResult | null>(null);
@@ -58,12 +59,21 @@ function App() {
     handleReset();
   };
 
+  const switchToReview = () => {
+    setViewMode('review');
+    handleReset();
+  };
+
   if (viewMode === 'streaming') {
     return <StreamingInterface onBack={switchToUpload} />;
   }
 
   if (viewMode === 'speakers') {
     return <SpeakerManagement onBack={switchToUpload} />;
+  }
+
+  if (viewMode === 'review') {
+    return <ReviewQueue onBack={switchToUpload} />;
   }
 
   if (viewMode === 'history') {
@@ -88,8 +98,8 @@ function App() {
   return (
     <div className="App">
       <header className="app-header">
-        <h1>⚡ FastAudio Analysis</h1>
-        <p>Advanced audio processing platform</p>
+        <h1>Hidear</h1>
+        <p>AI-Powered Audio Analysis & Speaker Recognition</p>
         <div className="mode-switcher">
           <button 
             className="mode-button active"
@@ -109,11 +119,17 @@ function App() {
           >
             👥 Speaker Management
           </button>
-          <button 
+          <button
             className="mode-button"
             onClick={switchToHistory}
           >
             📁 History
+          </button>
+          <button
+            className="mode-button"
+            onClick={switchToReview}
+          >
+            🔍 Review Queue
           </button>
         </div>
       </header>
@@ -142,8 +158,8 @@ function App() {
           <div className="processing-section">
             <div className="processing-container">
               <div className="spinner"></div>
-              <h3>⚡ FastAudio Processing</h3>
-              <p>Analyzing with Whisper transcription, pyannote speaker diarization, and emotion recognition models.</p>
+              <h3>Hidear Processing</h3>
+              <p>Analyzing with MERaLiON transcription, emotion recognition, and speaker diarization.</p>
             </div>
             <div className="action-buttons">
               <button className="reset-button" onClick={handleReset}>
@@ -167,7 +183,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>Powered by Whisper, pyannote.audio, and Transformers</p>
+        <p>Powered by MERaLiON-10B, pyannote.audio, and vLLM</p>
       </footer>
     </div>
   );

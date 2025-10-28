@@ -33,11 +33,11 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({ result }) => {
 
   return (
     <div className="transcript-viewer">
-      {/* FastAudio Analysis Summary */}
+      {/* Hidear Analysis Summary */}
       <div className="analysis-summary">
         <div className="summary-header">
-          <h3>⚡ FastAudio Analysis Results</h3>
-          <p>Whisper transcription with speaker diarization and emotion analysis</p>
+          <h3>Hidear Analysis Results</h3>
+          <p>Transcription with speaker diarization and emotion analysis</p>
         </div>
         <div className="summary-grid">
           <div className="summary-item">

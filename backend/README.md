@@ -17,6 +17,7 @@ backend/
 │   ├── recordings.py     # Recording management
 │   ├── speakers.py       # Speaker management
 │   ├── persistent_speakers.py  # Persistent speaker profiles
+│   ├── review_queue.py   # Speaker review queue for enrollment
 │   ├── tasks.py          # Task status endpoints
 │   ├── websocket.py      # WebSocket endpoints
 │   └── health.py         # Health check
@@ -44,6 +45,7 @@ backend/
     ├── audio.py          # Audio analysis schemas
     ├── recording.py      # Recording schemas
     ├── speaker.py        # Speaker schemas
+    ├── review_queue.py   # Review queue schemas
     └── common.py         # Common schemas
 ```
 
@@ -55,6 +57,7 @@ backend/
 - **Speaker Diarization**: Pyannote.audio for who-spoke-when
 - **Speaker Identification**: SpeechBrain for speaker recognition
 - **Persistent Speakers**: Cross-session speaker tracking
+- **Review Queue**: Enroll speakers from meeting recordings without dedicated enrollment sessions
 - **Voice Activity Detection**: Real-time VAD with WebSocket streaming
 
 ### API Versions

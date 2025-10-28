@@ -3,6 +3,7 @@ MERaLiON-10B Service for Transcription + Emotion Recognition
 Replaces Whisper and Emotion Recognition while keeping Diarization and Speaker ID
 """
 import os
+import re
 import torch
 import librosa
 import numpy as np
@@ -49,7 +50,13 @@ class MERaLiONService:
                 logger.info(f"CUDA devices: {torch.cuda.device_count()}")
                 logger.info(f"Current CUDA device: {torch.cuda.current_device()}")
 
-            # Load vLLM with MERaLiON - explicitly specify device
+            # Get memory configuration from environment (for shared GPU scenarios)
+            gpu_memory_utilization = float(os.getenv("VLLM_GPU_MEMORY_UTILIZATION", "0.90"))
+            max_model_len = int(os.getenv("VLLM_MAX_MODEL_LEN", "8192"))
+
+            logger.info(f"vLLM config: gpu_memory_utilization={gpu_memory_utilization}, max_model_len={max_model_len}")
+
+            # Load vLLM with MERaLiON - with memory optimization for shared GPU
             self.llm = LLM(
                 model=self.model_name,
                 tokenizer=self.model_name,
@@ -57,7 +64,12 @@ class MERaLiONService:
                 trust_remote_code=True,
                 dtype=torch.bfloat16,
                 device="cuda",  # Explicitly specify CUDA device
-                tensor_parallel_size=1
+                tensor_parallel_size=1,
+                # Memory optimization parameters for shared GPU environments
+                gpu_memory_utilization=gpu_memory_utilization,  # Reduce from default 0.90 to leave room for other users
+                max_model_len=max_model_len,  # Limit max sequence length to reduce KV cache memory
+                enforce_eager=False,  # Use CUDA graphs for efficiency when possible
+                swap_space=4,  # Allow 4GB swap space for handling memory spikes
             )
 
             # Sampling parameters (from MERaLiON example)
@@ -243,6 +255,7 @@ class MERaLiONService:
         - "Transcription: Hello world"
         - "Hello world"
         - "The speaker says 'Hello world'"
+        - "<Speaker1>Hello world"
         """
         # Common prefixes to remove
         prefixes = [
@@ -252,7 +265,6 @@ class MERaLiONService:
             "transcript:",
             "text:",
         ]
-
         text_lower = text.lower().strip()
 
         # Try to remove known prefixes
@@ -260,10 +272,13 @@ class MERaLiONService:
             if text_lower.startswith(prefix):
                 # Remove prefix and return rest
                 text = text[len(prefix):].strip()
-                # Remove quotes if present
-                text = text.strip("'\"")
-                return text
-
+            
+        # Remove quotes if present
+        text = text.strip("'\"")
+        
+        # Remove anything in angle brackets (like <Speaker1>)
+        text = re.sub(r'<[^>]*>', '', text).strip()
+        
         # If no prefix found, return as-is (might be direct transcription)
         return text
 

@@ -19,6 +19,7 @@ from .speakers import router as speakers_router
 from .persistent_speakers import router as persistent_speakers_router
 from .websocket import router as websocket_router
 from .tasks import router as tasks_router
+from .review_queue import router as review_queue_router
 
 # Create API v1 router
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -30,6 +31,7 @@ api_v1_router.include_router(recordings_router, prefix="/recordings", tags=["v1-
 api_v1_router.include_router(speakers_router, prefix="/speakers", tags=["v1-speakers"])
 api_v1_router.include_router(persistent_speakers_router, prefix="/persistent-speakers", tags=["v1-persistent-speakers"])
 api_v1_router.include_router(tasks_router, prefix="/tasks", tags=["v1-tasks"])
+api_v1_router.include_router(review_queue_router, prefix="/review-queue", tags=["v1-review-queue"])
 
 # Create main API router (includes all versions)
 api_router = APIRouter()
@@ -45,6 +47,7 @@ api_router.include_router(recordings_router, prefix="/api/recordings", tags=["le
 api_router.include_router(speakers_router, prefix="/api/speakers", tags=["legacy-speakers"])
 api_router.include_router(persistent_speakers_router, prefix="/api/persistent-speakers", tags=["legacy-persistent-speakers"])
 api_router.include_router(tasks_router, prefix="/api/tasks", tags=["legacy-tasks"])
+api_router.include_router(review_queue_router, prefix="/api/review-queue", tags=["legacy-review-queue"])
 
 # Include unversioned routes (health, websocket)
 api_router.include_router(health_router, tags=["health"])
@@ -60,5 +63,6 @@ __all__ = [
     "speakers_router",
     "persistent_speakers_router",
     "websocket_router",
-    "tasks_router"
+    "tasks_router",
+    "review_queue_router"
 ]

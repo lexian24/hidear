@@ -152,28 +152,28 @@ class SegmentSelector:
     def select_best_segments(
         segments_with_quality: List[Dict[str, Any]],
         max_segments: int = 5,
-        min_segments: int = 2
+        min_segments: int = 1
     ) -> List[Dict[str, Any]]:
         """
         Select the best segments for speaker enrollment.
-        
+
         Args:
             segments_with_quality: List of segment dicts with quality scores
             max_segments: Maximum number of segments to select
-            min_segments: Minimum number of segments required
-            
+            min_segments: Minimum number of segments required (default: 1, can be empty)
+
         Returns:
             List of selected segments sorted by quality
         """
         # Filter out segments that don't pass quality filters
         valid_segments = [
-            seg for seg in segments_with_quality 
+            seg for seg in segments_with_quality
             if seg['quality_assessment']['passes_filters']
         ]
-        
+
         if len(valid_segments) < min_segments:
             logger.warning(f"Only {len(valid_segments)} valid segments, need at least {min_segments}")
-            return []
+            return valid_segments  # Return what we have instead of empty list
         
         # Score segments for selection
         scored_segments = []
@@ -676,8 +676,8 @@ class PersistentSpeakerManager:
                     logger.warning(f"Error processing {audio_file}: {e}")
                     continue
             
-            if len(embeddings) < 2:
-                raise ValueError(f"Need at least 2 valid audio files, got {len(embeddings)}")
+            if len(embeddings) < 1:
+                raise ValueError(f"Need at least 1 valid audio file, got {len(embeddings)}")
             
             # Convert to numpy arrays
             import numpy as np

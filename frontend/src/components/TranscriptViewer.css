@@ -336,9 +336,9 @@
 }
 
 .segment-text {
-  font-size: 1.1rem;
-  line-height: 1.6;
-  color: var(--github-text);
+  font-size: 1.4rem;
+  line-height: 1.8;
+  color: #ffffff;
   margin-bottom: 1rem;
   padding: 1rem;
   background: var(--github-bg-secondary);

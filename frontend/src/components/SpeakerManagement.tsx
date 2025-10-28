@@ -51,11 +51,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    if (files.length < 2 || files.length > 5) {
-      setError('Please select 2-5 audio files for enrollment');
-      return;
-    }
-    
+
     // Validate file types
     const validFiles = files.filter(file => file.type.startsWith('audio/'));
     if (validFiles.length !== files.length) {
@@ -69,14 +65,14 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
 
   const handleEnrollSpeaker = async (event: React.FormEvent) => {
     event.preventDefault();
-    
+
     if (!enrollmentData.name.trim()) {
       setError('Please enter a speaker name');
       return;
     }
-    
-    if (enrollmentData.files.length < 2) {
-      setError('Please select 2-5 audio files');
+
+    if (enrollmentData.files.length === 0) {
+      setError('Please select at least one audio file');
       return;
     }
 
@@ -206,7 +202,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
             </div>
             
             <div className="form-group">
-              <label>Audio Samples (2-5 files):</label>
+              <label>Audio Samples (1-5 files):</label>
               <input
                 type="file"
                 multiple
@@ -216,8 +212,8 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
                 required
               />
               <small>
-                Select 2-5 audio files of the speaker talking (minimum 3 seconds each).
-                Different recordings provide better accuracy.
+                Select one or more audio files of the speaker talking.
+                More files and diverse recordings provide better accuracy.
               </small>
             </div>
 
@@ -233,7 +229,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
             )}
 
             <div className="form-actions">
-              <button type="submit" disabled={enrolling || enrollmentData.files.length < 2}>
+              <button type="submit" disabled={enrolling || enrollmentData.files.length === 0}>
                 {enrolling ? '⏳ Enrolling...' : 'Enroll Speaker'}
               </button>
               <button 

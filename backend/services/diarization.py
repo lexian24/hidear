@@ -66,34 +66,39 @@ class SpeakerDiarizer:
             logger.info("💡 Tip: You may need a HuggingFace token for the latest models")
             raise
     
-    def diarize(self, audio_path: str) -> Any:
+    def diarize(self, audio_path: str, max_speakers: int = None) -> Any:
         """
         Perform speaker diarization on audio file
-        
+
         Args:
             audio_path: Path to the audio file
-            
+            max_speakers: Maximum number of speakers to detect (None = unlimited, defaults to 100)
+
         Returns:
             Pyannote diarization result
         """
         try:
             if not self.pipeline:
                 raise RuntimeError("Diarization pipeline not loaded")
-            
-            logger.info(f"Running speaker diarization on: {audio_path}")
-            
-            # Apply the pipeline to the audio file
-            diarization = self.pipeline(audio_path)
-            
+
+            # Default to 100 speakers if not specified (allows detection of many speakers)
+            if max_speakers is None:
+                max_speakers = 100
+
+            logger.info(f"Running speaker diarization on: {audio_path} (max_speakers={max_speakers})")
+
+            # Apply the pipeline to the audio file with max_speakers parameter
+            diarization = self.pipeline(audio_path, max_speakers=max_speakers)
+
             # Count unique speakers
             speakers = set()
             segment_count = 0
             for segment, track, speaker in diarization.itertracks(yield_label=True):
                 speakers.add(speaker)
                 segment_count += 1
-            
+
             logger.info(f"Diarization completed: {len(speakers)} speakers, {segment_count} segments")
-            
+
             return diarization
             
         except Exception as e:

@@ -222,24 +222,35 @@ class EnhancedAudioProcessor(AudioProcessor):
             }
         
         # Step 2: No good match found - check for medium confidence matches
+        # Only search for medium confidence matches in async context (FastAPI)
+        # In sync context (Celery), just queue without suggestions
+        medium_confidence_matches = []
+
         if not is_sync_context:
-            # Only do medium confidence matching in async context (FastAPI)
+            # FastAPI context - search for medium confidence matches
             medium_confidence_matches = await self._find_medium_confidence_matches(
                 segments, audio_path, confidence_threshold * 0.8  # 80% of threshold
             )
 
-            if medium_confidence_matches and not auto_enroll:
-                # Queue for manual review
+        if not auto_enroll:
+            # Queue for manual review (with or without suggestions)
+            if is_sync_context:
+                # Use sync version for Celery
+                self._add_to_review_queue_sync(
+                    recording_id, session_speaker, segments, medium_confidence_matches
+                )
+            else:
+                # Use async version for FastAPI
                 await self._add_to_review_queue(
                     recording_id, session_speaker, segments, medium_confidence_matches
                 )
 
-                return {
-                    'method': 'needs_review',
-                    'session_speaker': session_speaker,
-                    'suggested_matches': medium_confidence_matches,
-                    'reason': 'medium_confidence_matches'
-                }
+            return {
+                'method': 'needs_review',
+                'session_speaker': session_speaker,
+                'suggested_matches': medium_confidence_matches,
+                'reason': 'medium_confidence_matches' if medium_confidence_matches else 'no_match'
+            }
 
         # Step 3: No match or auto-enrollment enabled - skip enrollment in sync mode
         if auto_enroll and not is_sync_context:
@@ -286,8 +297,14 @@ class EnhancedAudioProcessor(AudioProcessor):
             else:
                 logger.warning(f"Failed to enroll {session_speaker}: {enrollment_result['message']}")
         
-        # Step 4: Fallback - queue for manual review (skip in sync mode)
-        if not is_sync_context:
+        # Step 4: Fallback - queue for manual review in both contexts
+        if is_sync_context:
+            # Use sync version for Celery
+            self._add_to_review_queue_sync(
+                recording_id, session_speaker, segments, []
+            )
+        else:
+            # Use async version for FastAPI
             await self._add_to_review_queue(
                 recording_id, session_speaker, segments, []
             )
@@ -361,6 +378,33 @@ class EnhancedAudioProcessor(AudioProcessor):
             logger.error(f"Medium confidence matching failed: {e}")
             return []
     
+    def _add_to_review_queue_sync(
+        self,
+        recording_id: int,
+        session_speaker: str,
+        segments: List[Dict[str, Any]],
+        suggested_matches: List[Dict[str, Any]]
+    ) -> None:
+        """Add speaker assignment to review queue (sync version for Celery)."""
+        try:
+            total_duration = sum(seg['end_time'] - seg['start_time'] for seg in segments)
+            avg_quality = np.mean([0.7] * len(segments))  # Placeholder quality score
+
+            # Use sync database method
+            self.db.speaker_review_queue.add_to_review_queue_sync(
+                recording_id=recording_id,
+                session_speaker_label=session_speaker,
+                suggested_assignments=suggested_matches,
+                segment_count=len(segments),
+                total_duration=total_duration,
+                audio_quality=avg_quality,
+                priority=1 if len(suggested_matches) > 0 else 2
+            )
+            logger.info(f"Added {session_speaker} to review queue for recording {recording_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to add to review queue: {e}")
+
     async def _add_to_review_queue(
         self,
         recording_id: int,
@@ -368,11 +412,11 @@ class EnhancedAudioProcessor(AudioProcessor):
         segments: List[Dict[str, Any]],
         suggested_matches: List[Dict[str, Any]]
     ) -> None:
-        """Add speaker assignment to review queue."""
+        """Add speaker assignment to review queue (async version for FastAPI)."""
         try:
             total_duration = sum(seg['end_time'] - seg['start_time'] for seg in segments)
             avg_quality = np.mean([0.7] * len(segments))  # Placeholder quality score
-            
+
             await self.db.speaker_review_queue.add_to_review_queue(
                 recording_id=recording_id,
                 session_speaker_label=session_speaker,
@@ -382,7 +426,7 @@ class EnhancedAudioProcessor(AudioProcessor):
                 audio_quality=avg_quality,
                 priority=1 if len(suggested_matches) > 0 else 2
             )
-            
+
         except Exception as e:
             logger.error(f"Failed to add to review queue: {e}")
     

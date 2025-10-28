@@ -382,6 +382,47 @@ class SpeakerSegmentService:
         except SQLAlchemyError as e:
             raise Exception(f"Failed to get segments by result: {str(e)}")
 
+    async def get_segments_for_speaker_in_recording(
+        self,
+        recording_id: int,
+        speaker_label: str
+    ) -> List[SpeakerSegment]:
+        """
+        Get all segments for a specific speaker label in a recording.
+
+        Args:
+            recording_id: Recording ID
+            speaker_label: Speaker label from diarization (e.g., "SPEAKER_00")
+
+        Returns:
+            List of SpeakerSegment objects for this speaker, ordered by time
+        """
+        try:
+            # First get the processing result for this recording
+            result_query = await self.db.execute(
+                select(ProcessingResult)
+                .where(ProcessingResult.recording_id == recording_id)
+                .order_by(ProcessingResult.processed_at.desc())
+            )
+            processing_result = result_query.scalars().first()
+
+            if not processing_result:
+                return []
+
+            # Get segments for this speaker label
+            segments_query = await self.db.execute(
+                select(SpeakerSegment)
+                .options(selectinload(SpeakerSegment.speaker))
+                .where(
+                    SpeakerSegment.result_id == processing_result.id,
+                    SpeakerSegment.speaker_label == speaker_label
+                )
+                .order_by(SpeakerSegment.start_time)
+            )
+            return segments_query.scalars().all()
+        except SQLAlchemyError as e:
+            raise Exception(f"Failed to get segments for speaker: {str(e)}")
+
 
 class PersistentSpeakerService:
     """
@@ -717,9 +758,13 @@ class SpeakerReviewQueueService:
     """
     Service layer for SpeakerReviewQueue operations.
     Handles assignments that need manual review.
+
+    Provides both async (for FastAPI) and sync (for Celery) methods:
+    - Async methods: add_to_review_queue, get_pending_reviews, etc.
+    - Sync methods: add_to_review_queue_sync, delete_review_sync, etc. (for Celery context)
     """
-    
-    def __init__(self, db_session: AsyncSession):
+
+    def __init__(self, db_session):
         self.db = db_session
     
     async def add_to_review_queue(
@@ -767,15 +812,231 @@ class SpeakerReviewQueueService:
                 SpeakerReviewQueue.priority,
                 SpeakerReviewQueue.created_at
             )
-            
+
             if limit:
                 query = query.limit(limit).offset(offset)
-            
+
             result = await self.db.execute(query)
             return result.scalars().all()
-            
+
         except SQLAlchemyError as e:
             raise Exception(f"Failed to get pending reviews: {str(e)}")
+
+    async def get_review_by_id(self, review_id: int) -> Optional[SpeakerReviewQueue]:
+        """Get a specific review item by ID."""
+        try:
+            result = await self.db.execute(
+                select(SpeakerReviewQueue).where(SpeakerReviewQueue.id == review_id)
+            )
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            raise Exception(f"Failed to get review item: {str(e)}")
+
+    async def mark_reviewed(
+        self,
+        review_id: int,
+        resolved_speaker_id: str,
+        resolution_method: str
+    ) -> SpeakerReviewQueue:
+        """Mark a review item as reviewed."""
+        try:
+            review_item = await self.get_review_by_id(review_id)
+            if not review_item:
+                raise Exception(f"Review item {review_id} not found")
+
+            review_item.status = "reviewed"
+            review_item.resolved_speaker_id = resolved_speaker_id
+            review_item.resolution_method = resolution_method
+            review_item.reviewed_at = datetime.utcnow()
+
+            await self.db.commit()
+            await self.db.refresh(review_item)
+
+            return review_item
+
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            raise Exception(f"Failed to mark reviewed: {str(e)}")
+
+    async def dismiss_review(self, review_id: int) -> bool:
+        """Dismiss a review item."""
+        try:
+            review_item = await self.get_review_by_id(review_id)
+            if not review_item:
+                raise Exception(f"Review item {review_id} not found")
+
+            review_item.status = "dismissed"
+            review_item.reviewed_at = datetime.utcnow()
+
+            await self.db.commit()
+
+            return True
+
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            raise Exception(f"Failed to dismiss review: {str(e)}")
+
+    async def get_review_stats(self) -> Dict[str, Any]:
+        """Get statistics about the review queue."""
+        try:
+            # Count by status
+            from sqlalchemy import func
+
+            result = await self.db.execute(
+                select(
+                    SpeakerReviewQueue.status,
+                    func.count(SpeakerReviewQueue.id).label('count')
+                ).group_by(SpeakerReviewQueue.status)
+            )
+
+            stats = {
+                'total_items': 0,
+                'pending_count': 0,
+                'reviewed_count': 0,
+                'dismissed_count': 0
+            }
+
+            for row in result:
+                stats['total_items'] += row.count
+                if row.status == 'pending':
+                    stats['pending_count'] = row.count
+                elif row.status == 'reviewed':
+                    stats['reviewed_count'] = row.count
+                elif row.status == 'dismissed':
+                    stats['dismissed_count'] = row.count
+
+            return stats
+
+        except SQLAlchemyError as e:
+            raise Exception(f"Failed to get review stats: {str(e)}")
+
+    async def delete_review(self, review_id: int) -> bool:
+        """Delete a single review item by ID."""
+        try:
+            review_item = await self.get_review_by_id(review_id)
+            if not review_item:
+                return False
+
+            await self.db.delete(review_item)
+            await self.db.commit()
+            return True
+
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            raise Exception(f"Failed to delete review: {str(e)}")
+
+    async def clear_review_queue(self, status: Optional[str] = None) -> int:
+        """
+        Clear review queue items.
+
+        Args:
+            status: If provided, only delete items with this status (pending, reviewed, dismissed).
+                   If None, delete ALL items.
+
+        Returns:
+            Number of items deleted
+        """
+        try:
+            query = select(SpeakerReviewQueue)
+
+            if status:
+                query = query.where(SpeakerReviewQueue.status == status)
+
+            result = await self.db.execute(query)
+            items = result.scalars().all()
+
+            for item in items:
+                await self.db.delete(item)
+
+            await self.db.commit()
+            return len(items)
+
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            raise Exception(f"Failed to clear review queue: {str(e)}")
+
+    # ===== SYNC METHODS FOR CELERY CONTEXT =====
+    # These are synchronous versions of the methods above
+    # Used when DatabaseService is initialized with a sync Session (from Celery tasks)
+
+    def add_to_review_queue_sync(
+        self,
+        recording_id: int,
+        session_speaker_label: str,
+        suggested_assignments: List[Dict],
+        segment_count: Optional[int] = None,
+        total_duration: Optional[float] = None,
+        audio_quality: Optional[float] = None,
+        priority: int = 1
+    ) -> SpeakerReviewQueue:
+        """Add a speaker assignment to the review queue (sync version for Celery)."""
+        try:
+            review_item = SpeakerReviewQueue(
+                recording_id=recording_id,
+                session_speaker_label=session_speaker_label,
+                suggested_assignments=suggested_assignments,
+                segment_count=segment_count,
+                total_duration=total_duration,
+                audio_quality=audio_quality,
+                priority=priority
+            )
+
+            self.db.add(review_item)
+            self.db.commit()
+            self.db.refresh(review_item)
+
+            return review_item
+
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            raise Exception(f"Failed to add to review queue: {str(e)}")
+
+    def delete_review_sync(self, review_id: int) -> bool:
+        """Delete a single review item by ID (sync version for Celery)."""
+        try:
+            review_item = self.db.query(SpeakerReviewQueue).filter(
+                SpeakerReviewQueue.id == review_id
+            ).first()
+
+            if not review_item:
+                return False
+
+            self.db.delete(review_item)
+            self.db.commit()
+            return True
+
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            raise Exception(f"Failed to delete review: {str(e)}")
+
+    def clear_review_queue_sync(self, status: Optional[str] = None) -> int:
+        """
+        Clear review queue items (sync version for Celery).
+
+        Args:
+            status: If provided, only delete items with this status (pending, reviewed, dismissed).
+                   If None, delete ALL items.
+
+        Returns:
+            Number of items deleted
+        """
+        try:
+            query = self.db.query(SpeakerReviewQueue)
+
+            if status:
+                query = query.filter(SpeakerReviewQueue.status == status)
+
+            items = query.all()
+
+            for item in items:
+                self.db.delete(item)
+
+            self.db.commit()
+            return len(items)
+
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            raise Exception(f"Failed to clear review queue: {str(e)}")
 
 
 class ProcessingTaskService:
@@ -956,9 +1217,13 @@ class DatabaseService:
     """
     Main database service that aggregates all individual services.
     Provides a single interface for all database operations.
+
+    Works with both async (AsyncSession) and sync (Session) contexts:
+    - Async context (FastAPI): Use async methods
+    - Sync context (Celery): Use sync methods (suffixed with _sync)
     """
 
-    def __init__(self, db_session: AsyncSession):
+    def __init__(self, db_session):
         self.db = db_session
         self.recordings = RecordingService(db_session)
         self.processing_results = ProcessingResultService(db_session)
