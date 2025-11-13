@@ -69,15 +69,26 @@ class AudioProcessor:
             # Step 1: Speaker diarization
             logger.info("Running speaker diarization...")
             diarization = self.diarizer.diarize(audio_path)
-            
+
             # Step 2: Extract segments for transcription
+            # Support both pyannote community-1 (new) and older API
             segments = []
-            for segment, _, speaker in diarization.itertracks(yield_label=True):
-                segments.append({
-                    'start_time': segment.start,
-                    'end_time': segment.end,
-                    'speaker_id': speaker
-                })
+            if hasattr(diarization, 'speaker_diarization'):
+                # New pyannote.audio community-1 API
+                for turn, speaker in diarization.speaker_diarization:
+                    segments.append({
+                        'start_time': turn.start,
+                        'end_time': turn.end,
+                        'speaker_id': speaker
+                    })
+            else:
+                # Fallback for older pyannote.audio API
+                for segment, _, speaker in diarization.itertracks(yield_label=True):
+                    segments.append({
+                        'start_time': segment.start,
+                        'end_time': segment.end,
+                        'speaker_id': speaker
+                    })
             
             logger.info(f"Found {len(segments)} speech segments from {len(set(s['speaker_id'] for s in segments))} speakers")
             

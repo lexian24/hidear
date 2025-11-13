@@ -66,10 +66,13 @@ podman run -d \
   -e MERALION_SERVICE_URL=http://hidear-meralion:${MERALION_INTERNAL_PORT:-8001} \
   -e DATABASE_URL=${DATABASE_URL:-sqlite:///./hidear.db} \
   -e HF_TOKEN=${HF_TOKEN} \
+  -e HF_HOME=/app/models \
+  -e TRANSFORMERS_CACHE=/app/models \
   -e PORT=${BACKEND_INTERNAL_PORT:-8000} \
   -v ./backend:/app:z \
   -v ./backend/audio_files:/app/audio_files:z \
   -v ./backend/speaker_profiles:/app/speaker_profiles:z \
+  -v hidear_huggingface_cache:/app/models:z \
   -p ${BACKEND_PORT:-9427}:${BACKEND_INTERNAL_PORT:-8000} \
   --restart unless-stopped \
   hidear-backend \
@@ -88,7 +91,7 @@ podman run -d \
   -v ./backend:/app:z \
   -v ./backend/audio_files:/app/audio_files:z \
   -v ./backend/speaker_profiles:/app/speaker_profiles:z \
-  -v hidear_celery_models:/app/models:z \
+  -v hidear_huggingface_cache:/app/models:z \
   --restart unless-stopped \
   hidear-celery-worker
 

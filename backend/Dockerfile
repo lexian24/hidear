@@ -11,10 +11,12 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
+    git-lfs \
     ffmpeg \
     libsndfile1 \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && git lfs install
 
 # Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel

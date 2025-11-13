@@ -2,42 +2,45 @@
 # Hidear Backend Dependencies
 # ============================================================================
 # FastAPI and server dependencies
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-websockets==12.0
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+websockets>=12.0
 
 # Celery and Redis for async task processing
-celery==5.3.4
-redis==5.0.1
+celery>=5.3.4
+redis>=5.0.1
 
-# Core ML dependencies - LOCKED VERSIONS for pyannote.audio compatibility
-torch==2.2.0
-torchaudio==2.2.0
-numpy==1.26.4  # Last stable 1.x version, required for pyannote.audio
-scipy==1.11.4
+# Core ML dependencies - LOCKED VERSIONS for pyannote.audio 4.0+ compatibility
+torch>=2.8.0  # Required by pyannote.audio 4.0+
+torchaudio>=2.8.0  # Must match torch version
+numpy>=2.0  # Required by pyannote.core 6.0.1+
+scipy>=1.11.4  # Compatible with numpy 2.0+
 
 # Audio processing
-librosa==0.10.1
-soundfile==0.12.1
-pyannote.audio==3.1.1  # Locked to tested version
-speechbrain==1.0.0  # Required for inference module
+librosa>=0.10.1  # Loosened for compatibility with modern dependencies
+soundfile>=0.13.1  # Required by pyannote.audio 4.0+
+pyannote.audio  # Fixed huggingface_hub compatibility; uses token parameter
+huggingface_hub>=0.24.9,<1.0  
+speechbrain>=1.0.0  # Compatible with modern torch/numpy
 
 # Database
-sqlalchemy==2.0.23
-aiosqlite==0.19.0
+sqlalchemy>=2.0.23  # Loosened for compatibility
+aiosqlite>=0.19.0
 
 # Utilities
-python-dotenv==1.0.0
-requests==2.31.0
-pydub==0.25.1
-httpx==0.25.2
-email-validator==2.1.0  # Required for Pydantic EmailStr validation
+python-dotenv>=1.0.0
+requests>=2.31.0
+pydub>=0.25.1
+httpx>=0.25.2
+email-validator>=2.1.0  # Required for Pydantic EmailStr validation
 
 # Additional pyannote.audio dependencies (implicit, now explicit)
-pytorch-lightning==2.1.2
-torchmetrics==1.2.1
-asteroid-filterbanks==0.4.0
-pyannote.core==5.0.0
-pyannote.database==5.0.1
-pyannote.metrics==3.2.1
+# Note: pyannote.audio 4.0+ requires pyannote.core>=6.0.1 and torch>=2.8.0
+pytorch-lightning>=2.1.2  # Compatible with torch 2.8+
+torchmetrics>=1.2.1  # Compatible with torch 2.8+
+asteroid-filterbanks>=0.4.0
+pyannote.core>=6.0.1
+pyannote.database>=5.0.1
+pyannote.metrics>=3.2.1
+
