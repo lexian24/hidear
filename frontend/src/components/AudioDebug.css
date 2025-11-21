@@ -1,0 +1,74 @@
+.audio-debug {
+    padding: var(--spacing-lg);
+    border: 1px solid var(--glass-border);
+    margin: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    color: var(--text-primary);
+}
+
+.audio-debug h3 {
+    margin-top: 0;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.debug-stat {
+    margin: var(--spacing-sm) 0;
+    padding: var(--spacing-sm);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+}
+
+.debug-stat strong {
+    color: var(--accent-color);
+    margin-right: var(--spacing-sm);
+}
+
+.debug-controls {
+    margin: var(--spacing-lg) 0;
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+.debug-button {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.debug-button.start {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.debug-button.start:hover {
+    background: rgba(16, 185, 129, 0.3);
+    transform: translateY(-1px);
+}
+
+.debug-button.stop {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.debug-button.stop:hover {
+    background: rgba(239, 68, 68, 0.3);
+    transform: translateY(-1px);
+}
+
+.debug-hint {
+    margin-top: var(--spacing-md);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-style: italic;
+}

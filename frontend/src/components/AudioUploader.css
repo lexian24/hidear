@@ -1,7 +1,180 @@
-/* AudioUploader with GitHub styling */
+/* AudioUploader Modern Styling */
 .audio-uploader {
-  max-width: 600px;
+  width: 100%;
+  max-width: 800px;
   margin: 0 auto;
+}
+
+/* Upload Area */
+.upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 48px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-area:hover,
+.upload-area.drag-over {
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.upload-area.uploading {
+  border-color: var(--accent-secondary);
+  background: rgba(139, 92, 246, 0.05);
+  cursor: not-allowed;
+}
+
+/* Upload Content */
+.upload-content {
+  position: relative;
+  z-index: 2;
+}
+
+.upload-icon {
+  font-size: 48px;
+  margin-bottom: 24px;
+  display: inline-block;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+  transition: transform 0.3s ease;
+}
+
+.upload-area:hover .upload-icon {
+  transform: scale(1.1) rotate(-5deg);
+}
+
+.upload-content h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.upload-content>p {
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+.file-types {
+  color: var(--text-tertiary) !important;
+  font-size: 13px !important;
+  background: rgba(255, 255, 255, 0.05);
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+/* File Input */
+.file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.file-input:disabled {
+  cursor: not-allowed;
+}
+
+/* Upload Loading */
+.upload-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.upload-loading .spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.upload-loading p {
+  color: var(--accent-primary);
+  font-weight: 500;
+  font-size: 16px;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+/* Error Message */
+.error-message {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  font-size: 14px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.error-icon {
+  font-size: 18px;
+}
+
+/* Focus states */
+.file-input:focus+.upload-content {
+  outline: none;
+}
+
+.upload-area:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+/* Loading state overlay */
+.upload-area.uploading::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(99, 102, 241, 0.05) 50%, transparent 70%);
+  animation: loading-shimmer 2s infinite;
+  z-index: 1;
+}
+
+@keyframes loading-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 /* Upload Area */
@@ -52,7 +225,7 @@
   color: var(--github-text);
 }
 
-.upload-content > p {
+.upload-content>p {
   color: var(--github-text-secondary);
   margin-bottom: var(--spacing-sm);
   font-size: var(--font-size-base);
@@ -101,8 +274,13 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .upload-loading p {
@@ -135,19 +313,19 @@
   .upload-area {
     padding: var(--spacing-lg) var(--spacing-md);
   }
-  
+
   .upload-icon {
     font-size: var(--font-size-2xl);
   }
-  
+
   .upload-content h3 {
     font-size: var(--font-size-lg);
   }
-  
-  .upload-content > p {
+
+  .upload-content>p {
     font-size: var(--font-size-sm);
   }
-  
+
   .file-types {
     font-size: 12px !important;
   }
@@ -201,6 +379,11 @@
 }
 
 @keyframes loading-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }

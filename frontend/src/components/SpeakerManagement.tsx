@@ -81,7 +81,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
 
     try {
       const formData = new FormData();
-      
+
       enrollmentData.files.forEach((file, index) => {
         formData.append('files', file);
       });
@@ -98,14 +98,14 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
       }
 
       const result = await response.json();
-      
+
       // Reset form and refresh speakers list
       setEnrollmentData({ name: '', files: [] });
       setShowEnrollment(false);
       await fetchSpeakers();
-      
+
       alert(`Speaker "${result.speaker_name}" enrolled successfully!\nQuality: ${(result.avg_quality * 100).toFixed(1)}%\nConsistency: ${(result.consistency_score * 100).toFixed(1)}%`);
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to enroll speaker');
     } finally {
@@ -130,7 +130,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
 
       await fetchSpeakers();
       alert(`Speaker "${speakerName}" deleted successfully`);
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete speaker');
     }
@@ -173,7 +173,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
       )}
 
       <div className="speaker-actions">
-        <button 
+        <button
           className="enroll-button"
           onClick={() => setShowEnrollment(true)}
           disabled={showEnrollment}
@@ -200,7 +200,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
                 required
               />
             </div>
-            
+
             <div className="form-group">
               <label>Audio Samples (1-5 files):</label>
               <input
@@ -232,8 +232,8 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
               <button type="submit" disabled={enrolling || enrollmentData.files.length === 0}>
                 {enrolling ? '⏳ Enrolling...' : 'Enroll Speaker'}
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   setShowEnrollment(false);
                   setEnrollmentData({ name: '', files: [] });
@@ -249,7 +249,7 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
 
       <div className="speakers-section">
         <h2>Enrolled Speakers ({speakers.length})</h2>
-        
+
         {speakers.length === 0 ? (
           <div className="no-speakers">
             <p>No speakers enrolled yet.</p>
@@ -271,12 +271,12 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
                     <div className="speaker-email">📧 {speaker.email}</div>
                   )}
                 </div>
-                
-                <div className="speaker-actions">
+
+                <div className="speaker-actions-row">
                   <span className={`status-badge ${speaker.is_active ? 'active' : 'inactive'}`}>
                     {speaker.is_active ? 'Active' : 'Inactive'}
                   </span>
-                  <button 
+                  <button
                     className="delete-button"
                     onClick={() => handleDeleteSpeaker(speaker.id, speaker.name)}
                     title="Delete this speaker"

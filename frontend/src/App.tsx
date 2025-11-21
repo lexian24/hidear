@@ -39,104 +39,39 @@ function App() {
     setError(null);
   };
 
-  const switchToStreaming = () => {
-    setViewMode('streaming');
+  const switchMode = (mode: ViewMode) => {
+    setViewMode(mode);
     handleReset();
   };
 
-  const switchToUpload = () => {
-    setViewMode('upload');
-    handleReset();
-  };
+  const renderContent = () => {
+    if (viewMode === 'streaming') {
+      return <StreamingInterface onBack={() => switchMode('upload')} />;
+    }
 
-  const switchToSpeakers = () => {
-    setViewMode('speakers');
-    handleReset();
-  };
+    if (viewMode === 'speakers') {
+      return <SpeakerManagement onBack={() => switchMode('upload')} />;
+    }
 
-  const switchToHistory = () => {
-    setViewMode('history');
-    handleReset();
-  };
+    if (viewMode === 'review') {
+      return <ReviewQueue onBack={() => switchMode('upload')} />;
+    }
 
-  const switchToReview = () => {
-    setViewMode('review');
-    handleReset();
-  };
+    if (viewMode === 'history') {
+      return <RecordingHistory onRecordingSelect={(recording) => console.log(recording)} />;
+    }
 
-  if (viewMode === 'streaming') {
-    return <StreamingInterface onBack={switchToUpload} />;
-  }
-
-  if (viewMode === 'speakers') {
-    return <SpeakerManagement onBack={switchToUpload} />;
-  }
-
-  if (viewMode === 'review') {
-    return <ReviewQueue onBack={switchToUpload} />;
-  }
-
-  if (viewMode === 'history') {
     return (
-      <div className="App">
-        <header className="app-header">
-          <button className="back-button" onClick={switchToUpload}>
-            ← Back to Home
-          </button>
-          <h1>📁 Recording History</h1>
-          <p>View and manage all your recordings</p>
+      <div className="dashboard-content animate-fade-in">
+        <header className="dashboard-header">
+          <div>
+            <h1>Audio Analysis</h1>
+            <p className="subtitle">Upload and analyze audio with AI-powered insights</p>
+          </div>
         </header>
-        <main className="app-main">
-          <RecordingHistory onRecordingSelect={(recording) => {
-            console.log('Selected recording:', recording);
-          }} />
-        </main>
-      </div>
-    );
-  }
 
-  return (
-    <div className="App">
-      <header className="app-header">
-        <h1>Hidear</h1>
-        <p>AI-Powered Audio Analysis & Speaker Recognition</p>
-        <div className="mode-switcher">
-          <button 
-            className="mode-button active"
-            onClick={switchToUpload}
-          >
-            📁 Upload File
-          </button>
-          <button 
-            className="mode-button"
-            onClick={switchToStreaming}
-          >
-            🎤 Auto Recording
-          </button>
-          <button 
-            className="mode-button"
-            onClick={switchToSpeakers}
-          >
-            👥 Speaker Management
-          </button>
-          <button
-            className="mode-button"
-            onClick={switchToHistory}
-          >
-            📁 History
-          </button>
-          <button
-            className="mode-button"
-            onClick={switchToReview}
-          >
-            🔍 Review Queue
-          </button>
-        </div>
-      </header>
-      
-      <main className="app-main">
         {error && (
-          <div className="error-banner">
+          <div className="error-banner glass-panel">
             <span className="error-icon">❌</span>
             <span className="error-text">{error}</span>
             <button className="error-close" onClick={() => setError(null)}>×</button>
@@ -144,8 +79,8 @@ function App() {
         )}
 
         {!analysisResult && !isProcessing && (
-          <div className="upload-section">
-            <AudioUploader 
+          <div className="upload-section glass-panel">
+            <AudioUploader
               onAnalysisStart={handleAnalysisStart}
               onAnalysisComplete={handleAnalysisComplete}
               onError={handleError}
@@ -155,36 +90,92 @@ function App() {
         )}
 
         {isProcessing && (
-          <div className="processing-section">
+          <div className="processing-section glass-panel">
             <div className="processing-container">
-              <div className="spinner"></div>
-              <h3>Hidear Processing</h3>
+              <div className="spinner-ring"></div>
+              <h3>Processing Audio</h3>
               <p>Analyzing with MERaLiON transcription, emotion recognition, and speaker diarization.</p>
             </div>
             <div className="action-buttons">
-              <button className="reset-button" onClick={handleReset}>
-                Cancel & Upload New File
+              <button className="btn-secondary" onClick={handleReset}>
+                Cancel
               </button>
             </div>
           </div>
         )}
 
         {analysisResult && (
-          <div className="results-section">
+          <div className="results-section animate-fade-in">
             <div className="results-header">
-              <h2>Analysis Complete!</h2>
-              <button className="reset-button" onClick={handleReset}>
-                Analyze Another File
+              <h2>Analysis Complete</h2>
+              <button className="btn-primary" onClick={handleReset}>
+                Analyze New File
               </button>
             </div>
             <TranscriptViewer result={analysisResult} />
           </div>
         )}
-      </main>
+      </div>
+    );
+  };
 
-      <footer className="app-footer">
-        <p>Powered by MERaLiON-10B, pyannote.audio, and vLLM</p>
-      </footer>
+  return (
+    <div className="app-layout">
+      <aside className="sidebar glass-panel">
+        <div className="sidebar-header">
+          <div className="logo">Hidear</div>
+          <div className="version">v2.0</div>
+        </div>
+
+        <nav className="sidebar-nav">
+          <button
+            className={`nav-item ${viewMode === 'upload' ? 'active' : ''}`}
+            onClick={() => switchMode('upload')}
+          >
+            <span className="icon">📁</span>
+            Upload File
+          </button>
+          <button
+            className={`nav-item ${viewMode === 'streaming' ? 'active' : ''}`}
+            onClick={() => switchMode('streaming')}
+          >
+            <span className="icon">🎤</span>
+            Auto Recording
+          </button>
+          <button
+            className={`nav-item ${viewMode === 'speakers' ? 'active' : ''}`}
+            onClick={() => switchMode('speakers')}
+          >
+            <span className="icon">👥</span>
+            Speakers
+          </button>
+          <button
+            className={`nav-item ${viewMode === 'history' ? 'active' : ''}`}
+            onClick={() => switchMode('history')}
+          >
+            <span className="icon">📜</span>
+            History
+          </button>
+          <button
+            className={`nav-item ${viewMode === 'review' ? 'active' : ''}`}
+            onClick={() => switchMode('review')}
+          >
+            <span className="icon">🔍</span>
+            Review Queue
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="status-indicator">
+            <div className="status-dot online"></div>
+            <span>System Online</span>
+          </div>
+        </div>
+      </aside>
+
+      <main className="main-content">
+        {renderContent()}
+      </main>
     </div>
   );
 }

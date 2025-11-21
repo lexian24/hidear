@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import './AudioDebug.css';
 
 const AudioDebug: React.FC = () => {
   const [status, setStatus] = useState<string>('Ready');
@@ -10,7 +11,7 @@ const AudioDebug: React.FC = () => {
   const startTest = useCallback(async () => {
     try {
       setStatus('Requesting microphone permission...');
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -40,18 +41,18 @@ const AudioDebug: React.FC = () => {
       // Use ScriptProcessorNode for Safari
       const bufferSize = 4096;
       const processor = audioContextRef.current.createScriptProcessor(bufferSize, 1, 1);
-      
+
       source.connect(processor);
       processor.connect(audioContextRef.current.destination);
-      
+
       let chunks = 0;
       processor.onaudioprocess = (event) => {
         chunks++;
         setChunkCount(chunks);
-        
+
         const inputBuffer = event.inputBuffer;
         const audioData = inputBuffer.getChannelData(0);
-        
+
         // Calculate audio level
         let sum = 0;
         for (let i = 0; i < audioData.length; i++) {
@@ -59,7 +60,7 @@ const AudioDebug: React.FC = () => {
         }
         const rms = Math.sqrt(sum / audioData.length);
         setAudioLevel(rms);
-        
+
         if (chunks <= 5) {
           console.log(`Audio chunk ${chunks}:`, audioData.length, 'samples, RMS:', rms.toFixed(4));
         }
@@ -87,27 +88,29 @@ const AudioDebug: React.FC = () => {
     setChunkCount(0);
   }, []);
 
+
+
   return (
-    <div style={{ padding: '20px', border: '1px solid #ccc', margin: '20px', borderRadius: '8px' }}>
+    <div className="audio-debug">
       <h3>🔧 Safari Audio Debug Test</h3>
-      <div style={{ margin: '10px 0' }}>
+      <div className="debug-stat">
         <strong>Status:</strong> {status}
       </div>
-      <div style={{ margin: '10px 0' }}>
+      <div className="debug-stat">
         <strong>Audio Level:</strong> {(audioLevel * 100).toFixed(1)}%
       </div>
-      <div style={{ margin: '10px 0' }}>
+      <div className="debug-stat">
         <strong>Chunks Received:</strong> {chunkCount}
       </div>
-      <div style={{ margin: '20px 0' }}>
-        <button onClick={startTest} style={{ marginRight: '10px', padding: '10px' }}>
+      <div className="debug-controls">
+        <button onClick={startTest} className="debug-button start">
           🎤 Start Audio Test
         </button>
-        <button onClick={stopTest} style={{ padding: '10px' }}>
+        <button onClick={stopTest} className="debug-button stop">
           ⏹️ Stop Test
         </button>
       </div>
-      <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+      <div className="debug-hint">
         Open Safari Console (Develop → Show Web Inspector) to see detailed logs
       </div>
     </div>

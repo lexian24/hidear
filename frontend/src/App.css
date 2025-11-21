@@ -14,11 +14,11 @@
   --github-danger: #da3633;
   --github-warning: #bf8700;
   --github-muted: #484f58;
-  
+
   /* Singapore flag colors for MERaLiON branding */
   --singapore-red: #ee2737;
   --singapore-blue: #0066cc;
-  
+
   /* Spacing and typography */
   --spacing-xs: 0.25rem;
   --spacing-sm: 0.5rem;
@@ -26,7 +26,7 @@
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
   --spacing-2xl: 3rem;
-  
+
   --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
   --font-size-sm: 14px;
   --font-size-base: 16px;
@@ -34,7 +34,7 @@
   --font-size-xl: 20px;
   --font-size-2xl: 24px;
   --font-size-3xl: 32px;
-  
+
   --border-radius: 8px;
   --border-radius-lg: 12px;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -57,13 +57,237 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.App {
-  min-height: 100vh;
+.app-layout {
   display: flex;
-  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
 }
 
-/* Header */
+/* Sidebar Styles */
+.sidebar {
+  width: var(--sidebar-width);
+  height: calc(100vh - 40px);
+  margin: 20px 0 20px 20px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.sidebar-header {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+.version {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  width: 100%;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.1), transparent);
+  color: var(--accent-primary);
+  border-left: 3px solid var(--accent-primary);
+}
+
+.nav-item .icon {
+  font-size: 18px;
+}
+
+.sidebar-footer {
+  padding: 20px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-tertiary);
+}
+
+.status-dot.online {
+  background-color: var(--success);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+/* Main Content Styles */
+.main-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.dashboard-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+}
+
+.dashboard-header {
+  margin-bottom: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.dashboard-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  margin: 0;
+  font-size: 16px;
+}
+
+/* Section Styles */
+.upload-section,
+.processing-section,
+.results-section {
+  margin-bottom: 24px;
+  padding: 32px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+/* Processing State */
+.processing-container {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.spinner-ring {
+  display: inline-block;
+  width: 64px;
+  height: 64px;
+  border: 4px solid rgba(99, 102, 241, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--accent-primary);
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 24px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.processing-container h3 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.processing-container p {
+  color: var(--text-secondary);
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+/* Error Banner */
+.error-banner {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.error-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: currentColor;
+  cursor: pointer;
+  font-size: 20px;
+  opacity: 0.7;
+}
+
+.error-close:hover {
+  opacity: 1;
+}
+
+/* Results Header */
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.results-header h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
 .app-header {
   background: linear-gradient(135deg, var(--singapore-red) 0%, var(--singapore-blue) 100%);
   color: white;
@@ -249,8 +473,13 @@ body {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Action buttons */
@@ -281,7 +510,8 @@ body {
 }
 
 /* Buttons */
-.reset-button, .new-analysis-button {
+.reset-button,
+.new-analysis-button {
   background: var(--github-accent);
   color: white;
   border: none;
@@ -293,12 +523,14 @@ body {
   transition: background-color 0.2s, transform 0.1s;
 }
 
-.reset-button:hover, .new-analysis-button:hover {
+.reset-button:hover,
+.new-analysis-button:hover {
   background: var(--github-accent-hover);
   transform: translateY(-1px);
 }
 
-.reset-button:active, .new-analysis-button:active {
+.reset-button:active,
+.new-analysis-button:active {
   transform: translateY(0);
 }
 
@@ -321,33 +553,33 @@ body {
   .app-header {
     padding: var(--spacing-lg) var(--spacing-md);
   }
-  
+
   .app-header h1 {
     font-size: var(--font-size-2xl);
   }
-  
+
   .app-header p {
     font-size: var(--font-size-base);
   }
-  
+
   .app-main {
     padding: 0 var(--spacing-md);
   }
-  
+
   .feature-highlights {
     grid-template-columns: 1fr;
     gap: var(--spacing-md);
   }
-  
+
   .processing-container {
     padding: var(--spacing-lg);
   }
-  
+
   .results-header {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .action-buttons {
     flex-direction: column;
     align-items: center;
@@ -372,8 +604,15 @@ button:focus {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Singapore-themed accents */
