@@ -134,6 +134,8 @@ async def get_recording_details(
                 "model_versions": result.model_versions,
                 "status": result.status,
                 "processed_at": result.processed_at.isoformat() if result.processed_at else None,
+                "summary": result.summary,
+                "summary_json": result.summary_json,
                 "speaker_segments": speaker_segments
             })
 

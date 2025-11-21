@@ -164,6 +164,54 @@ def process_audio_file(
                     'all_emotions': convert_to_native_types(dict(emotion_counts))
                 }
 
+        # Generate summary using Llama-3-8B
+        logger.info("Generating summary...")
+        summary_json = None
+        try:
+            from services.meralion_client import MERaLiONClient
+
+            # Initialize MERaLiON client for summarization
+            meralion_client = MERaLiONClient()
+
+            # Extract speaker segments for context (including emotion data)
+            speaker_segments = [
+                {
+                    'speaker_id': seg.get('persistent_speaker_name') or seg.get('speaker_id'),
+                    'text': seg.get('text', ''),
+                    'emotion': seg.get('emotion', 'neutral'),
+                    'start_time': seg.get('start_time')
+                }
+                for seg in result.get('segments', [])
+            ]
+
+            logger.info(f"Starting summarization with {len(speaker_segments) if speaker_segments else 0} speaker segments")
+            summary_result = meralion_client.summarize(
+                transcription=transcription,
+                speaker_segments=speaker_segments
+            )
+            logger.info(f"Summarization complete. Result keys: {summary_result.keys()}")
+            logger.info(f"Summary result: intention={bool(summary_result.get('intention'))}, conclusion={bool(summary_result.get('conclusion'))}, speaker_pov keys={list(summary_result.get('speaker_pov', {}).keys())}")
+
+            summary_json = {
+                'intention': summary_result.get('intention', ''),
+                'conclusion': summary_result.get('conclusion', ''),
+                'speaker_pov': summary_result.get('speaker_pov', {}),
+                'model': summary_result.get('model', 'meta-llama/Meta-Llama-3-8B-Instruct'),
+                'generated_at': summary_result.get('generated_at', '')
+            }
+            logger.info(f"Created summary_json: {summary_json}")
+
+        except Exception as e:
+            logger.warning(f"Summarization failed, continuing without summary: {e}")
+            logger.error(f"Summarization exception details: {traceback.format_exc()}")
+            summary_json = {
+                'intention': f"[Summary unavailable: {str(e)[:100]}]",
+                'conclusion': '',
+                'speaker_pov': {},
+                'model': 'meta-llama/Meta-Llama-3-8B-Instruct',
+                'generated_at': ''
+            }
+
         # Prepare diarization data (convert numpy types to native Python types)
         filtered_segments = [seg for seg in result.get('segments', []) if seg.get('text', '').strip()]
         diarization_data = {
@@ -183,6 +231,8 @@ def process_audio_file(
             emotions_json=emotions_data,
             dominant_emotion=dominant_emotion,
             emotion_confidence=emotion_confidence,
+            summary=summary_json.get('intention', '') if summary_json else None,
+            summary_json=summary_json,
             model_versions={
                 "whisper": "openai/whisper-small",
                 "pyannote": "pyannote/speaker-diarization-3.1",
@@ -190,9 +240,11 @@ def process_audio_file(
             },
             status="completed"
         )
+        logger.info(f"About to save ProcessingResult - summary_json: {processing_result.summary_json}")
         db.add(processing_result)
         db.commit()
         db.refresh(processing_result)
+        logger.info(f"✅ ProcessingResult saved to DB with ID: {processing_result.id}, summary_json: {processing_result.summary_json}")
 
         # Save speaker segments
         if result.get('segments'):
@@ -230,11 +282,13 @@ def process_audio_file(
                     db.add(speaker_segment)
                 db.commit()
 
-        # Add metadata to result
+        # Add metadata and summary to result
         result.update({
             "processing_time": time.time() - start_time,
             "status": "completed",
-            "recording_id": recording_id
+            "recording_id": recording_id,
+            "summary": summary_json.get('intention', '') if summary_json else None,
+            "summary_json": summary_json
         })
 
         # Update task record with results (convert numpy types)
@@ -390,6 +444,8 @@ def process_vad_recording(
             emotions_json=emotions_data,
             dominant_emotion=dominant_emotion,
             emotion_confidence=emotion_confidence,
+            summary=summary_json.get('intention', '') if summary_json else None,
+            summary_json=summary_json,
             model_versions={
                 "whisper": "openai/whisper-small",
                 "pyannote": "pyannote/speaker-diarization-3.1",
@@ -397,9 +453,11 @@ def process_vad_recording(
             },
             status="completed"
         )
+        logger.info(f"About to save ProcessingResult - summary_json: {processing_result.summary_json}")
         db.add(processing_result)
         db.commit()
         db.refresh(processing_result)
+        logger.info(f"✅ ProcessingResult saved to DB with ID: {processing_result.id}, summary_json: {processing_result.summary_json}")
 
         # Save speaker segments
         if result.get('segments'):
@@ -437,11 +495,13 @@ def process_vad_recording(
                     db.add(speaker_segment)
                 db.commit()
 
-        # Add metadata to result
+        # Add metadata and summary to result
         result.update({
             "processing_time": time.time() - start_time,
             "status": "completed",
-            "recording_id": recording_id
+            "recording_id": recording_id,
+            "summary": summary_json.get('intention', '') if summary_json else None,
+            "summary_json": summary_json
         })
 
         # Update task record with results (convert numpy types)

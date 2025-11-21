@@ -164,9 +164,79 @@ def download_pyannote_models(hf_token: Optional[str] = None) -> bool:
         return False
 
 
-def download_transformers_models(hf_token: Optional[str] = None) -> bool:
+def download_meralion_model(hf_token: Optional[str] = None) -> bool:
     """
-    Download any transformers models needed by the application.
+    Download MERaLiON-2-10B model for local caching.
+
+    Args:
+        hf_token: HuggingFace API token
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        logger.info("=" * 60)
+        logger.info("Downloading MERaLiON-2-10B model...")
+        logger.info("=" * 60)
+
+        token = hf_token or os.getenv("HF_TOKEN")
+        model_id = "MERaLiON/MERaLiON-2-10B"
+
+        logger.info(f"📥 Downloading {model_id}...")
+        logger.info(f"   This may take 10-20 minutes (model is ~20GB)...")
+        logger.info(f"   Using vLLM to cache the model...")
+
+        try:
+            from vllm import LLM
+
+            logger.info(f"   Loading model with vLLM (will cache to HF_HOME)...")
+            llm = LLM(
+                model=model_id,
+                download_dir=os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface")),
+                trust_remote_code=True,
+                dtype="bfloat16",
+                gpu_memory_utilization=0.4,
+                max_model_len=4096
+            )
+            logger.info(f"✅ Successfully downloaded and cached {model_id}")
+            return True
+
+        except ImportError:
+            logger.warning(f"⚠️  vLLM not installed, trying transformers instead...")
+
+            # Fallback: download with transformers (slower but works)
+            logger.info(f"   Loading tokenizer...")
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_id,
+                token=token,
+                trust_remote_code=True
+            )
+            logger.info(f"✅ Tokenizer downloaded")
+
+            logger.info(f"   Loading model (this will take a while)...")
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                token=token,
+                trust_remote_code=True,
+                device_map="cpu"  # Load on CPU to avoid GPU OOM during download
+            )
+            logger.info(f"✅ Successfully downloaded {model_id}")
+            return True
+
+    except ImportError as e:
+        logger.warning(f"⚠️  Required library not installed: {e}")
+        logger.warning(f"   Install with: pip install vllm transformers")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error downloading MERaLiON model: {e}")
+        return False
+
+
+def download_llama_model(hf_token: Optional[str] = None) -> bool:
+    """
+    Download Meta-Llama-3-8B-Instruct model for summarization.
 
     Args:
         hf_token: HuggingFace API token
@@ -178,26 +248,77 @@ def download_transformers_models(hf_token: Optional[str] = None) -> bool:
         from transformers import AutoTokenizer
 
         logger.info("=" * 60)
-        logger.info("Downloading transformers models...")
+        logger.info("Downloading Meta-Llama-3-8B-Instruct model...")
         logger.info("=" * 60)
 
-        # Get token from environment or parameter
+        token = hf_token or os.getenv("HF_TOKEN")
+        model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
+
+        logger.info(f"📥 Downloading {model_id}...")
+        logger.info(f"   This may take 5-10 minutes (model is ~15GB)...")
+
+        try:
+            from vllm import LLM
+
+            logger.info(f"   Loading model with vLLM (will cache to HF_HOME)...")
+            llm = LLM(
+                model=model_id,
+                download_dir=os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface")),
+                trust_remote_code=True,
+                dtype="bfloat16",
+                gpu_memory_utilization=0.2,
+                max_model_len=4096
+            )
+            logger.info(f"✅ Successfully downloaded and cached {model_id}")
+            return True
+
+        except ImportError:
+            logger.warning(f"⚠️  vLLM not installed, trying transformers instead...")
+
+            # Fallback: download tokenizer at least
+            logger.info(f"   Loading tokenizer...")
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_id,
+                token=token,
+                trust_remote_code=True
+            )
+            logger.info(f"✅ Tokenizer downloaded for {model_id}")
+            logger.info(f"⚠️  Full model will be downloaded when vLLM is installed")
+            return True
+
+    except ImportError as e:
+        logger.warning(f"⚠️  transformers not installed: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error downloading Llama model: {e}")
+        return False
+
+
+def download_transformers_models(hf_token: Optional[str] = None) -> bool:
+    """
+    Download LLM models needed by the application.
+
+    Args:
+        hf_token: HuggingFace API token
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
         token = hf_token or os.getenv("HF_TOKEN")
 
-        # Add any specific transformer models you use here
-        # Example:
-        # models = ["microsoft/phi-2", "openai/whisper-base", ...]
+        logger.info("=" * 60)
+        logger.info("Downloading LLM models...")
+        logger.info("=" * 60)
 
-        logger.info("ℹ️  No specific transformer models configured for download")
-        logger.info("   (Add model IDs to this script if needed)")
+        success = True
+        success = download_meralion_model(token) and success
+        success = download_llama_model(token) and success
 
-        return True
+        return success
 
-    except ImportError:
-        logger.info("ℹ️  transformers not installed (OK, may not be needed)")
-        return True
     except Exception as e:
-        logger.error(f"❌ Error downloading transformer models: {e}")
+        logger.error(f"❌ Error downloading LLM models: {e}")
         return False
 
 
@@ -222,9 +343,11 @@ def verify_cache() -> bool:
             cached_files = list(cache_dir.glob("**/*"))
             logger.info(f"✅ Cache directory exists with {len(cached_files)} items")
 
-            # List some cached models
+            # List cached models
             if cached_files:
                 logger.info("\nCached model directories:")
+
+                # Pyannote models
                 models_dir = cache_dir / "models--pyannote--speaker-diarization-3.1"
                 if models_dir.exists():
                     logger.info(f"  ✅ pyannote/speaker-diarization-3.1")
@@ -232,6 +355,34 @@ def verify_cache() -> bool:
                 models_dir = cache_dir / "models--pyannote--speaker-diarization"
                 if models_dir.exists():
                     logger.info(f"  ✅ pyannote/speaker-diarization")
+
+                models_dir = cache_dir / "models--pyannote--speaker-diarization-community-1"
+                if models_dir.exists():
+                    logger.info(f"  ✅ pyannote/speaker-diarization-community-1")
+
+                # MERaLiON model
+                models_dir = cache_dir / "models--MERaLiON--MERaLiON-2-10B"
+                if models_dir.exists():
+                    logger.info(f"  ✅ MERaLiON/MERaLiON-2-10B")
+                else:
+                    logger.info(f"  ❌ MERaLiON/MERaLiON-2-10B (not cached)")
+
+                # Llama model
+                models_dir = cache_dir / "models--meta-llama--Meta-Llama-3-8B-Instruct"
+                if models_dir.exists():
+                    logger.info(f"  ✅ meta-llama/Meta-Llama-3-8B-Instruct")
+                else:
+                    logger.info(f"  ❌ meta-llama/Meta-Llama-3-8B-Instruct (not cached)")
+
+                # Emotion model
+                models_dir = cache_dir / "models--j-hartmann--emotion-english-distilroberta-base"
+                if models_dir.exists():
+                    logger.info(f"  ✅ j-hartmann/emotion-english-distilroberta-base")
+
+                # Whisper model
+                models_dir = cache_dir / "models--openai--whisper-small"
+                if models_dir.exists():
+                    logger.info(f"  ✅ openai/whisper-small")
         else:
             logger.warning(f"⚠️  Cache directory does not exist: {cache_dir}")
             return False
@@ -268,12 +419,21 @@ def main():
     logger.info("\n" + "=" * 60)
     if success:
         logger.info("✅ All models downloaded successfully!")
+        logger.info("=" * 60)
+        logger.info("Models are now cached and will be used offline.")
         logger.info("=" * 60 + "\n")
         return 0
     else:
         logger.error("❌ Some models failed to download")
+        logger.info("\n⚠️  FALLBACK MODE: Application will attempt to download models")
+        logger.info("    on first run when needed. This may take time depending on")
+        logger.info("    model sizes and internet connectivity.")
+        logger.info("\n💡 To pre-cache models later, run this script again:")
+        logger.info("   python download_models.py")
         logger.info("=" * 60 + "\n")
-        return 1
+        # Return 0 to allow container to start even if download fails
+        # Models will be downloaded on demand
+        return 0
 
 
 if __name__ == "__main__":

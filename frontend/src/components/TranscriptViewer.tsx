@@ -57,6 +57,42 @@ const TranscriptViewer: React.FC<TranscriptViewerProps> = ({ result }) => {
         </div>
       </div>
 
+      {/* Summary Section - Intention & Conclusion (now speaker-aware) */}
+      {result.summary_json && (result.summary_json.intention || result.summary_json.conclusion || (result.summary_json.speaker_pov && Object.keys(result.summary_json.speaker_pov).length > 0)) && (
+        <div className="summary-section">
+          <h2>Conversation Summary</h2>
+          <div className="summary-box">
+            {result.summary_json.intention && (
+              <div className="summary-item">
+                <h3>Intention</h3>
+                <p>{result.summary_json.intention}</p>
+              </div>
+            )}
+            {result.summary_json.conclusion && (
+              <div className="summary-item">
+                <h3>Conclusion</h3>
+                <p>{result.summary_json.conclusion}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Speaker POV Section */}
+          {result.summary_json.speaker_pov && Object.keys(result.summary_json.speaker_pov).length > 0 && (
+            <div className="speaker-pov-section">
+              <h3>Point of View Analysis</h3>
+              <div className="speaker-pov-grid">
+                {Object.entries(result.summary_json.speaker_pov).map(([speaker, pov]) => (
+                  <div key={speaker} className="speaker-pov-item">
+                    <h4>{speaker}</h4>
+                    <p>{pov}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Speaker Legend */}
       <div className="speaker-legend">
         <h3>Speakers</h3>

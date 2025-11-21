@@ -27,6 +27,13 @@ interface ProcessingResult {
   emotions_json: any;
   dominant_emotion: string | null;
   emotion_confidence: number | null;
+  summary: string | null;
+  summary_json: {
+    intention?: string;
+    conclusion?: string;
+    model?: string;
+    generated_at?: string;
+  } | null;
   processing_duration: number | null;
   model_versions: any;
   status: string;
@@ -173,7 +180,9 @@ const RecordingHistory: React.FC<RecordingHistoryProps> = ({ onRecordingSelect }
       status: result.status,
       processing_time: result.processing_duration || 0,
       speakers: Array.from(speakerMap.values()),
-      segments: segments
+      segments: segments,
+      summary: result.summary || undefined,
+      summary_json: result.summary_json || undefined
     };
   };
 
@@ -424,12 +433,24 @@ const RecordingHistory: React.FC<RecordingHistoryProps> = ({ onRecordingSelect }
                           {result.status === 'completed' && result.speaker_segments && result.speaker_segments.length > 0 && (
                             <div className="result-actions">
                               <div className="result-summary">
+                                {/* Summary Section */}
+                                {result.summary_json && (result.summary_json.intention || result.summary_json.conclusion) && (
+                                  <div className="history-summary-preview">
+                                    <h4>Summary</h4>
+                                    {result.summary_json.intention && (
+                                      <p className="intention"><strong>Intention:</strong> {result.summary_json.intention}</p>
+                                    )}
+                                    {result.summary_json.conclusion && (
+                                      <p className="conclusion"><strong>Conclusion:</strong> {result.summary_json.conclusion}</p>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="summary-stats">
                                   <span>📝 {result.transcription ? `${result.transcription.length} chars transcribed` : 'No transcription'}</span>
                                   <span>🗣️ {result.speaker_segments.length} speaker segments</span>
                                   <span>⏱️ {result.processing_duration ? `${result.processing_duration.toFixed(1)}s processing` : 'Processing time unknown'}</span>
                                 </div>
-                                <button 
+                                <button
                                   className="view-details-button"
                                   onClick={() => setModalRecording({recording, result})}
                                 >

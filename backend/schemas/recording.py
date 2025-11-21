@@ -57,10 +57,21 @@ class SpeakerSummary(BaseModel):
     confidence: float
 
 
+class SummaryData(BaseModel):
+    """Summary data with intention, conclusion, and speaker summaries."""
+    intention: Optional[str] = None
+    conclusion: Optional[str] = None
+    speaker_summaries: Optional[Dict[str, str]] = None
+    model: Optional[str] = None
+    generated_at: Optional[str] = None
+
+
 class RecordingDetailResponse(BaseModel):
     """Detailed recording response with processing results."""
     recording: RecordingResponse
     transcription: Optional[str] = None
+    summary: Optional[str] = None
+    summary_json: Optional[SummaryData] = None
     segments: List[TranscriptSegment] = []
     speakers: List[SpeakerSummary] = []
     processing_status: str

@@ -67,7 +67,11 @@ class ProcessingResult(Base):
     emotions_json = Column(JSON, nullable=True)
     dominant_emotion = Column(String(50), nullable=True)
     emotion_confidence = Column(Float, nullable=True)
-    
+
+    # Summary results (stored as JSON and text)
+    summary = Column(Text, nullable=True)  # Brief summary text
+    summary_json = Column(JSON, nullable=True)  # Structured summary: {intention, conclusion, model, generated_at}
+
     # Processing metadata
     processing_duration = Column(Float, nullable=True)  # Time taken to process
     model_versions = Column(JSON, nullable=True)  # Versions of models used
@@ -141,7 +145,7 @@ class SpeakerSegment(Base):
     
     # Identification confidence
     confidence = Column(Float, nullable=True)   # Confidence score for speaker identification
-    
+
     # Segment metadata
     segment_text = Column(Text, nullable=True)  # Transcribed text for this segment
     speaker_label = Column(String(50), nullable=True)  # Original diarization label (e.g., "SPEAKER_00")

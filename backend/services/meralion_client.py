@@ -6,7 +6,7 @@ import os
 import requests
 import logging
 import numpy as np
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List, Optional
 import base64
 import io
 
@@ -181,6 +181,57 @@ class MERaLiONClient:
         except Exception as e:
             logger.error(f"Array transcription request failed: {e}")
             return ""
+
+    def summarize(self, transcription: str, speaker_segments: List[Dict] = None) -> Dict[str, str]:
+        """
+        Summarize transcription via HTTP call
+
+        Args:
+            transcription: Full transcribed text
+            speaker_segments: Optional list of speaker segments for context
+
+        Returns:
+            {
+                "intention": str,
+                "conclusion": str,
+                "speaker_pov": dict,
+                "model": str,
+                "generated_at": str
+            }
+        """
+        try:
+            payload = {
+                "transcription": transcription,
+                "speaker_segments": speaker_segments or []
+            }
+
+            response = requests.post(
+                f"{self.base_url}/summarize",
+                json=payload,
+                timeout=120  # Summarization may take longer
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Summary generated: {result.get('intention', '')[:50]}...")
+                return result
+            else:
+                logger.error(f"Summarization failed: {response.status_code} - {response.text}")
+                return {
+                    "intention": "[summarization failed]",
+                    "conclusion": "",
+                    "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+                    "generated_at": ""
+                }
+
+        except Exception as e:
+            logger.error(f"Summarization request failed: {e}")
+            return {
+                "intention": f"[Error: {str(e)}]",
+                "conclusion": "",
+                "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+                "generated_at": ""
+            }
 
     def get_info(self) -> Dict[str, Any]:
         """Get model information via HTTP call"""

@@ -13,12 +13,22 @@ export interface Segment {
   emotion_confidence: number;
 }
 
+export interface SummaryData {
+  intention?: string;
+  conclusion?: string;
+  speaker_pov?: Record<string, string>;
+  model?: string;
+  generated_at?: string;
+}
+
 export interface AudioAnalysisResult {
   filename: string;
   status: string;
   processing_time: number;
   speakers: Speaker[];
   segments: Segment[];
+  summary?: string;
+  summary_json?: SummaryData;
   error_message?: string;
 }
 

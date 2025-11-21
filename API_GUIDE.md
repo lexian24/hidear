@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hidear is a professional audio analysis platform with speaker identification, transcription, and diarization capabilities. This guide explains how to access and use the API endpoints for integrating Hidear components into your applications.
+Hidear (looks like hi dear but its hid ear), is a audio analysis platform with speaker identification, transcription, and diarization capabilities. This guide explains how to access and use the API endpoints for integrating Hidear components into your applications.
 
 ## Service Endpoints
 
@@ -221,17 +221,9 @@ curl -X POST "http://localhost:9427/api/v1/persistent-speakers" \
 ```
 
 **Requirements:**
-- Minimum 1 audio file (previously required 2-5)
+- Minimum 1 audio file
 - Audio files must be clear speech with minimal background noise
 - Supported formats: `.wav`, `.mp3`, `.m4a`, `.flac`, `.ogg`, `.webm`
-
-**Quality Assessment:**
-The system automatically extracts voice segments and evaluates them on:
-- Signal-to-Noise Ratio (SNR)
-- RMS Energy
-- Zero-Crossing Rate (ZCR)
-- Speech clarity
-
 ---
 
 ### List All Persistent Speakers
@@ -668,102 +660,3 @@ app.add_middleware(
     allow_headers=["*"],
 )
 ```
-
----
-
-## Error Handling
-
-All endpoints return standard HTTP status codes:
-
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 400 | Bad request (invalid input) |
-| 404 | Resource not found |
-| 413 | File too large (>50MB) |
-| 500 | Server error |
-
-**Error Response Format:**
-```json
-{
-  "detail": "Error message explaining what went wrong"
-}
-```
-
----
-
-## Rate Limiting & Performance
-
-- **File Size Limit**: 50MB per file
-- **Concurrent Tasks**: Limited by Celery worker configuration
-- **Processing Time**: Varies based on audio length and content
-  - Average: 1-2 seconds of audio processes in 5-10 seconds
-
----
-
-## Troubleshooting
-
-### Issue: "File too large" error
-**Solution**: Files must be ≤50MB. Split larger files or check `.env` `MAX_FILE_SIZE_MB`.
-
-### Issue: "Connection refused" on port 9427
-**Solution**: Verify backend container is running:
-```bash
-podman logs hidear-backend
-podman ps | grep hidear
-```
-
-### Issue: Task shows "processing" indefinitely
-**Solution**: Check Celery worker logs:
-```bash
-podman logs hidear-celery
-```
-
-### Issue: MERaLiON transcription fails
-**Solution**: Ensure MERaLiON service is running:
-```bash
-podman logs hidear-meralion
-```
-
----
-
-## Performance Tips
-
-1. **Use short audio clips** (< 5 minutes) for faster processing
-2. **Batch multiple analyses** rather than sequential requests
-3. **Monitor task queue** to avoid overloading the worker
-4. **Use persistent speakers** for faster identification (instead of enrolling each time)
-5. **Clean up old tasks** periodically:
-   ```bash
-   curl -X POST "http://localhost:9427/api/v1/tasks/cleanup?days=7"
-   ```
-
----
-
-## Support
-
-For detailed API documentation with interactive examples, visit:
-- **Swagger UI**: `http://localhost:9427/api/docs`
-- **ReDoc**: `http://localhost:9427/api/redoc`
-
-For issues, check container logs:
-```bash
-./stop-services.sh
-./start-services.sh
-podman logs -f hidear-backend
-```
-
----
-
-## Version History
-
-- **v2.0.0** (Current)
-  - Speaker enrollment with 1+ files (reduced from 2-5)
-  - Enhanced speaker diarization with configurable max_speakers
-  - Review queue for unidentified speakers
-  - Full transcription + diarization + emotion analysis
-  - WebSocket support for real-time updates
-
----
-
-**Last Updated**: October 27, 2024

@@ -8,7 +8,7 @@ import sys
 import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import numpy as np
 import base64
 import io
@@ -61,6 +61,20 @@ class TranscribeResponse(BaseModel):
 class EmotionResponse(BaseModel):
     emotion: str
     confidence: float
+    success: bool = True
+
+
+class SummarizeRequest(BaseModel):
+    transcription: str
+    speaker_segments: Optional[List[Dict]] = None
+
+
+class SummarizeResponse(BaseModel):
+    intention: str
+    conclusion: str
+    speaker_pov: dict = {}
+    model: str
+    generated_at: str
     success: bool = True
 
 
@@ -201,6 +215,35 @@ async def transcribe_array(request: TranscribeArrayRequest):
     except Exception as e:
         logger.error(f"Array transcription failed: {e}")
         raise HTTPException(status_code=500, detail=f"Array transcription failed: {str(e)}")
+
+
+@app.post("/summarize", response_model=SummarizeResponse)
+async def summarize(request: SummarizeRequest):
+    """
+    Summarize transcription with intention and conclusion
+
+    Args:
+        request: SummarizeRequest with transcription and optional speaker_segments
+
+    Returns:
+        SummarizeResponse with intention, conclusion, and metadata
+    """
+    if meralion_service is None:
+        raise HTTPException(status_code=503, detail="MERaLiON service not loaded")
+
+    try:
+        logger.info(f"Summarizing transcription ({len(request.transcription)} chars)")
+
+        result = meralion_service.summarize(
+            transcription=request.transcription,
+            speaker_segments=request.speaker_segments or []
+        )
+
+        return SummarizeResponse(**result, success=True)
+
+    except Exception as e:
+        logger.error(f"Summarization request failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")
 
 
 @app.get("/info", response_model=InfoResponse)
