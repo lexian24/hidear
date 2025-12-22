@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import './SpeakerManagement.css';
 
 interface Speaker {
-  id: number;
+  id: string;
   name: string;
-  email?: string;
-  num_enrollments: number;
-  total_speaking_time: number;
   confidence_threshold: number;
+  total_speaking_time: number;
+  total_segments: number;
+  total_recordings: number;
+  embedding_count: number;
+  first_seen: string;
+  last_seen: string;
   is_active: boolean;
-  created_at: string;
 }
 
 interface SpeakerManagementProps {
@@ -104,8 +106,6 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
       setShowEnrollment(false);
       await fetchSpeakers();
 
-      alert(`Speaker "${result.speaker_name}" enrolled successfully!\nQuality: ${(result.avg_quality * 100).toFixed(1)}%\nConsistency: ${(result.consistency_score * 100).toFixed(1)}%`);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to enroll speaker');
     } finally {
@@ -113,7 +113,27 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
     }
   };
 
-  const handleDeleteSpeaker = async (speakerId: number, speakerName: string) => {
+  const handleToggleSpeakerActivation = async (speakerId: string, speakerName: string, currentStatus: boolean) => {
+    const action = currentStatus ? 'deactivate' : 'activate';
+
+    try {
+      const response = await fetch(`${API_BASE}/api/persistent-speakers/${speakerId}/toggle-activation`, {
+        method: 'PATCH',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Failed to ${action} speaker`);
+      }
+
+      await fetchSpeakers();
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to ${action} speaker`);
+    }
+  };
+
+  const handleDeleteSpeaker = async (speakerId: string, speakerName: string) => {
     if (!window.confirm(`Are you sure you want to delete speaker "${speakerName}"?`)) {
       return;
     }
@@ -262,26 +282,23 @@ const SpeakerManagement: React.FC<SpeakerManagementProps> = ({ onBack }) => {
                 <div className="speaker-info">
                   <div className="speaker-name">{speaker.name}</div>
                   <div className="speaker-meta">
-                    <span>📊 {speaker.num_enrollments} samples</span>
                     <span>⏱️ {formatSpeakingTime(speaker.total_speaking_time)} total</span>
-                    <span>🎯 {(speaker.confidence_threshold * 100).toFixed(0)}% threshold</span>
-                    <span>📅 {formatDateTime(speaker.created_at)}</span>
+                    <span>📅 {formatDateTime(speaker.first_seen)}</span>
                   </div>
-                  {speaker.email && (
-                    <div className="speaker-email">📧 {speaker.email}</div>
-                  )}
                 </div>
 
                 <div className="speaker-actions-row">
-                  <span className={`status-badge ${speaker.is_active ? 'active' : 'inactive'}`}>
-                    {speaker.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                  <button
+                    className={`toggle-activation-button ${speaker.is_active ? 'active' : 'inactive'}`}
+                    onClick={() => handleToggleSpeakerActivation(speaker.id, speaker.name, speaker.is_active)}
+                    title={speaker.is_active ? 'Deactivate this speaker' : 'Activate this speaker'}
+                  />
                   <button
                     className="delete-button"
                     onClick={() => handleDeleteSpeaker(speaker.id, speaker.name)}
-                    title="Delete this speaker"
+                    title="Delete this speaker permanently"
                   >
-                    🗑️ Delete
+                    🗑️
                   </button>
                 </div>
               </div>

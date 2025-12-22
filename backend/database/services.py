@@ -581,18 +581,33 @@ class PersistentSpeakerService:
             await self.db.rollback()
             raise Exception(f"Failed to update speaker stats: {str(e)}")
     
+    async def update_speaker_activation(self, speaker_id: str, is_active: bool) -> bool:
+        """Update speaker activation status."""
+        try:
+            speaker = await self.get_persistent_speaker(speaker_id)
+            if not speaker:
+                return False
+
+            speaker.is_active = is_active
+            await self.db.commit()
+            return True
+
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            raise Exception(f"Failed to update speaker activation: {str(e)}")
+
     async def delete_persistent_speaker(self, speaker_id: str) -> bool:
         """Delete a persistent speaker and all associated data."""
         try:
             speaker = await self.get_persistent_speaker(speaker_id)
             if not speaker:
                 return False
-            
+
             # Delete the speaker (cascading should handle embeddings, mappings, etc.)
             await self.db.delete(speaker)
             await self.db.commit()
             return True
-            
+
         except SQLAlchemyError as e:
             await self.db.rollback()
             raise Exception(f"Failed to delete speaker: {str(e)}")

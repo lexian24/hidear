@@ -1,21 +1,23 @@
 # Hidear - AI-Powered Audio Intelligence Platform
 
-An advanced audio analysis platform using **MERaLiON-10B** for transcription and emotion recognition, with speaker diarization, identification, and intelligent speaker enrollment.
+An advanced audio analysis platform using MERaLiON for transcription and emotion recognition, with speaker diarization, identification, and intelligent speaker enrollment.
 
 ## 🎯 Key Features
 
 ### 🎤 Audio Processing
-- **Multi-modal Transcription**: MERaLiON-10B for accurate speech-to-text
-- **Emotion Recognition**: AI-powered emotion detection from audio
-- **Speaker Diarization**: Who-spoke-when using pyannote.audio (supports 3+ speakers)
+- **Multi-modal Transcription**: MERaLiON for accurate speech-to-text
+- **Emotion Recognition**: MERaLiON for AI-powered emotion detection from audio
+- **Speaker Diarization**: Who-spoke-when using pyannote.audio (supports 6 speakers)
 - **Speaker Identification**: Cross-session speaker recognition with speaker embeddings
 - **Voice Activity Detection**: Real-time VAD with WebSocket streaming
 
 ### 👥 Speaker Management
 - **Persistent Speaker Profiles**: Cross-session speaker tracking
-- **Flexible Enrollment**: Enroll speakers with just 1 audio file (previously required 2-5)
-- **Review Queue System**: Verify and enroll unidentified speakers
-- **Audio Segment Extraction**: Extract and use specific segments for enrollment
+- **Flexible Enrollment**: Enroll speakers with just 30s audio file 
+- **Speaker Activation/Deactivation**: Deactivate speakers instead of deleting them for better data preservation
+- **Segment-Based Enrollment**: Select specific segments from meeting recordings for enrollment
+- **Review Queue System**: Verify and enroll unidentified speakers from recordings
+- **Audio Segment Extraction**: Extract and preview individual segments before enrollment
 
 ### ⚡ Performance
 - **GPU Acceleration**: CUDA support for MERaLiON-10B
@@ -26,9 +28,10 @@ An advanced audio analysis platform using **MERaLiON-10B** for transcription and
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **GPU Server** (recommended): NVIDIA GPU with CUDA support
-- **Podman** or Docker with GPU support
-- **HuggingFace Token** with access to MERaLiON-2-10B model
+- **Podman** or Docker
+- **HuggingFace Token** for speaker diarization and identification models
+- **Remote MERaLiON Endpoint** URL (for transcription and emotion recognition)
+- **AWS SageMaker Qwen Endpoint** (for conversation summarization)
 
 ### 1. Clone and Configure
 
@@ -37,10 +40,10 @@ cd hidear
 
 # Edit .env and add your HuggingFace token
 nano .env
+
+# Build images using podman
+./build-images.sh
 ```
-
-See [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) for detailed configuration.
-
 ### 2. Start Services
 
 ```bash
@@ -51,7 +54,6 @@ See [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) for detailed configurat
 Access the application:
 - 🌐 **Frontend**: http://localhost:5847
 - 🔧 **Backend API**: http://localhost:9427
-- 🤖 **MERaLiON**: http://localhost:9428
 - 📚 **API Docs**: http://localhost:9427/api/docs
 
 ### 3. Stop Services
@@ -59,42 +61,6 @@ Access the application:
 ```bash
 ./stop-services.sh
 ```
-
-**New to Hidear?** Start with [QUICK_START.md](./QUICK_START.md) for a 10-minute setup guide.
-
-## 📋 New Feature: Review Queue System
-
-### Problem Solved
-**Before**: Users needed 3-5 minutes of continuous audio to enroll a speaker.
-**Now**: Enroll speakers using segments from any meeting recording!
-
-### How It Works
-
-1. **Upload Meeting** → System processes and identifies speakers
-2. **Auto-Queue** → Unidentified speakers added to review queue
-3. **Review & Verify** → Listen to speaker segments
-4. **Enroll** → Create speaker profile from verified segments
-
-### Quick Example
-
-```bash
-# 1. Check pending reviews
-curl http://localhost:9427/api/v1/review-queue?status=pending
-
-# 2. Listen to speaker segments
-curl http://localhost:9427/api/v1/review-queue/1/audio -o speaker.wav
-afplay speaker.wav  # macOS
-
-# 3. Enroll speaker
-curl -X POST http://localhost:9427/api/v1/review-queue/1/enroll \
-  -H "Content-Type: application/json" \
-  -d '{
-    "speaker_name": "Alice Johnson",
-    "use_all_segments": true
-  }'
-```
-
-**📖 Full Guide**: See [REVIEW_QUEUE_QUICKSTART.md](REVIEW_QUEUE_QUICKSTART.md)
 
 ## 🏗️ Architecture
 
@@ -112,13 +78,13 @@ curl -X POST http://localhost:9427/api/v1/review-queue/1/enroll \
 │  • Task management                                  │
 └─────────────────────────────────────────────────────┘
          ↓ Celery                      ↓ HTTP
-┌─────────────────────┐      ┌─────────────────────────┐
-│   Celery Worker     │      │  MERaLiON Service       │
-│  • Diarization      │      │  http://localhost:9428  │
-│  • Speaker ID       │      │  • Transcription        │
-│  • Audio processing │      │  • Emotion Recognition  │
-└─────────────────────┘      │  • GPU Accelerated      │
-         ↓                    └─────────────────────────┘
+┌─────────────────────┐      ┌─────────────────────────────────┐
+│   Celery Worker     │      │     Remote Endpoints            │
+│  • Diarization      │      │  • MERaLiON (Transcription)    │
+│  • Speaker ID       │      │  • Qwen (AWS SageMaker)        │
+│  • Audio processing │      │  • Emotion Recognition         │
+└─────────────────────┘      └─────────────────────────────────┘
+         ↓
 ┌─────────────────────┐
 │   Redis (Broker)    │
 │  • Task queue       │
@@ -130,8 +96,9 @@ curl -X POST http://localhost:9427/api/v1/review-queue/1/enroll \
 
 - **Frontend**: React TypeScript with real-time audio visualization
 - **Backend API**: FastAPI with async support
-- **Celery Worker**: Background processing for audio analysis
-- **MERaLiON Service**: Dedicated GPU service for MERaLiON-10B model
+- **Celery Worker**: Local processing for diarization and speaker identification
+- **Remote MERaLiON**: OpenAI-compatible API for transcription and emotion
+- **Remote Qwen**: AWS SageMaker for conversation summarization
 - **Redis**: Message broker and caching layer
 
 ## 📚 API Endpoints
@@ -143,9 +110,10 @@ curl -X POST http://localhost:9427/api/v1/review-queue/1/enroll \
 - `GET /api/v1/tasks` - List all tasks
 
 ### Speaker Management
-- `GET /api/v1/persistent-speakers` - List enrolled speakers
-- `POST /api/v1/persistent-speakers` - Enroll new speaker (now supports 1+ files)
-- `DELETE /api/v1/persistent-speakers/{id}` - Delete speaker
+- `GET /api/persistent-speakers` - List all speakers (active & inactive)
+- `POST /api/persistent-speakers` - Enroll new speaker (supports 1+ audio files)
+- `PATCH /api/persistent-speakers/{id}/toggle-activation` - Toggle speaker activation status
+- `DELETE /api/persistent-speakers/{id}` - Permanently delete speaker
 
 ### Review Queue
 - `GET /api/v1/review-queue` - List pending reviews
@@ -160,14 +128,14 @@ curl -X POST http://localhost:9427/api/v1/review-queue/1/enroll \
 
 **Full API Docs**: http://localhost:9427/api/docs
 
-**📖 Complete documentation**: See [API_GUIDE.md](./API_GUIDE.md)
 
 ## 🛠️ Technology Stack
 
 ### AI Models
-- **MERaLiON-2-10B**: Multi-modal LLM for audio (transcription + emotion)
-- **Pyannote.audio 3.3**: Speaker diarization
-- **SpeechBrain**: Speaker verification and identification
+- **MERaLiON** (Remote): Multi-modal LLM for audio (transcription + emotion)
+- **Qwen** (Remote AWS SageMaker): LLM for conversation summarization
+- **Pyannote.audio**: Speaker diarization (local)
+- **SpeechBrain**: Speaker verification and identification (local)
 - **Silero VAD**: Voice activity detection
 
 ### Backend
@@ -235,107 +203,14 @@ GPU_ID=0  # GPU device ID
 MERALION_MODEL=MERaLiON/MERaLiON-2-10B
 ```
 
-### GPU Configuration
+### Remote Endpoint Configuration
 
-The system automatically uses GPU if available:
-- MERaLiON service uses `--gpus all` flag
-- Set `GPU_ID` to select specific GPU
-- Falls back to CPU if GPU unavailable
-
-## 📖 Documentation
-
-Start here: **[DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** - Choose your use case!
-
-- **[QUICK_START.md](./QUICK_START.md)**: Get started in 10 minutes
-- **[API_GUIDE.md](./API_GUIDE.md)**: Complete REST API reference
-- **[COMPONENT_INTEGRATION.md](./COMPONENT_INTEGRATION.md)**: Integration guides & examples
-- **[DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md)**: Production deployment
-
-## 🧪 Testing
-
-### API Testing
-
-Use the interactive API docs:
+Configure remote endpoints in .env:
 ```bash
-open http://localhost:9427/api/docs
+MERALION_ENDPOINT_URL=http://192.168.140.226:8005/v1
+QWEN_SAGEMAKER_ENDPOINT=your-sagemaker-endpoint
+QWENVL_AWS_ACCESS_KEY_ID=your-aws-key
+QWENVL_AWS_SECRET_ACCESS_KEY=your-aws-secret
 ```
 
-Or test with curl:
-```bash
-# Upload audio
-curl -X POST http://localhost:9427/api/v1/analysis/analyze \
-  -F "file=@meeting.wav"
-
-# Check task status
-curl http://localhost:9427/api/v1/tasks/{task_id}
-
-# List speakers
-curl http://localhost:9427/api/v1/persistent-speakers
-```
-
-See [QUICK_START.md](./QUICK_START.md) for more examples.
-
-## 🐛 Troubleshooting
-
-### GPU Not Detected
-```bash
-# Check GPU availability
-podman run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-```
-
-### Model Download Issues
-- Ensure HF_TOKEN has access to MERaLiON-2-10B
-- Check internet connection
-- Models cached in volumes: `meraudio_meralion_models`
-
-### Service Won't Start
-```bash
-# Check logs
-podman logs hidear-backend
-podman logs hidear-meralion
-podman logs hidear-celery
-
-# Check if ports are available
-lsof -i :9427  # Backend
-lsof -i :9428  # MERaLiON
-lsof -i :5847  # Frontend
-```
-
-See [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) for more troubleshooting.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
-## 📝 License
-
-[Your License Here]
-
-## 🙏 Acknowledgments
-
-- **MERaLiON Team**: For the amazing multi-modal audio model
-- **Pyannote.audio**: For speaker diarization
-- **SpeechBrain**: For speaker verification
-- **HuggingFace**: For model hosting
-
-## 📞 Support & Documentation
-
-**Start Here**: [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)
-
-**Quick Links**:
-- 📖 [QUICK_START.md](./QUICK_START.md) - Get going in 10 minutes
-- 🔌 [API_GUIDE.md](./API_GUIDE.md) - Full API reference
-- 🏗️ [COMPONENT_INTEGRATION.md](./COMPONENT_INTEGRATION.md) - Integration examples
-- 🚀 [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) - Production deployment
-- 📊 Interactive Docs: `http://localhost:9427/api/docs`
-
----
-
-**Built with ❤️ for intelligent audio processing**
-
-**Version**: 2.0.0
-**Last Updated**: October 27, 2024
+GPU acceleration is handled by remote services.

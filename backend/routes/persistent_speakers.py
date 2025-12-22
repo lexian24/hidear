@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 async def get_persistent_speakers(
     db_service: DatabaseService = Depends(get_database_service)
 ):
-    """Get list of all persistent speakers"""
+    """Get list of all persistent speakers (both active and inactive)"""
     try:
-        speakers = await db_service.persistent_speakers.get_all_persistent_speakers(active_only=True)
+        speakers = await db_service.persistent_speakers.get_all_persistent_speakers(active_only=False)
         
         speakers_data = []
         for speaker in speakers:
@@ -116,6 +116,38 @@ async def create_persistent_speaker(
         logger.error(f"Failed to enroll persistent speaker: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to enroll persistent speaker: {str(e)}")
 
+@router.patch("/{speaker_id}/toggle-activation")
+async def toggle_speaker_activation(
+    speaker_id: str,
+    db_service: DatabaseService = Depends(get_database_service)
+):
+    """Toggle speaker activation status (active/inactive)"""
+    try:
+        # Get current speaker
+        speaker = await db_service.persistent_speakers.get_persistent_speaker(speaker_id)
+        if not speaker:
+            raise HTTPException(status_code=404, detail="Persistent speaker not found")
+
+        # Toggle activation status
+        new_status = not speaker.is_active
+        success = await db_service.persistent_speakers.update_speaker_activation(speaker_id, new_status)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update speaker activation status")
+
+        return {
+            "status": "updated",
+            "speaker_id": speaker_id,
+            "is_active": new_status,
+            "message": f"Speaker {speaker.name} is now {'activated' if new_status else 'deactivated'}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to toggle speaker activation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to toggle speaker activation: {str(e)}")
+
 @router.delete("/{speaker_id}")
 async def delete_persistent_speaker(
     speaker_id: str,
@@ -128,7 +160,7 @@ async def delete_persistent_speaker(
             raise HTTPException(status_code=404, detail="Persistent speaker not found")
 
         return {"status": "deleted", "speaker_id": speaker_id}
-        
+
     except HTTPException:
         raise
     except Exception as e:

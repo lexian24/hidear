@@ -18,12 +18,14 @@ const StreamingInterface: React.FC<StreamingInterfaceProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
 
   const API_BASE = ''; // Use relative URLs to go through nginx proxy
-  
+
   // Initialize microphone, WebSocket, and continuous recorder hooks
   const microphone = useMicrophone();
-  // Construct WebSocket URL based on current location (http -> ws, https -> wss)
+  // Construct WebSocket URL - use backend port 9427 for WebSocket endpoint
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${wsProtocol}//${window.location.host}/ws/vad-stream`;
+  const backendHost = window.location.hostname;
+  const backendPort = process.env.REACT_APP_BACKEND_PORT || '9427';
+  const wsUrl = `${wsProtocol}//${backendHost}:${backendPort}/ws/vad-stream`;
   const vadWebSocket = useVadWebSocket(wsUrl);
   const continuousRecorder = useContinuousRecorder();
   
@@ -215,16 +217,21 @@ const StreamingInterface: React.FC<StreamingInterfaceProps> = ({ onBack }) => {
   const startVadMonitoring = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Connect WebSocket first
       vadWebSocket.connect();
-      
+
+      // Give WebSocket time to connect (simple delay approach)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log('✅ WebSocket connection established, proceeding with VAD setup');
+
       // Start VAD monitoring on backend
       const response = await fetch(`${API_BASE}/vad/start`, {
         method: 'POST',
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to start monitoring');
@@ -232,10 +239,10 @@ const StreamingInterface: React.FC<StreamingInterfaceProps> = ({ onBack }) => {
 
       // Start microphone recording
       await microphone.startRecording();
-      
+
       // Start WebSocket streaming
       vadWebSocket.startStreaming();
-      
+
       setError(null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to start monitoring';

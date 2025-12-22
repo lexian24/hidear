@@ -9,7 +9,6 @@ backend/
 ├── main.py                 # FastAPI application entry point
 ├── config.py               # Configuration settings
 ├── celery_app.py          # Celery worker configuration
-├── meralion_worker.py     # MERaLiON service worker
 ├── init_db.py             # Database initialization
 ├── routes/                # API endpoints
 │   ├── analysis.py        # Audio analysis endpoints
@@ -52,10 +51,11 @@ backend/
 ## Features
 
 ### Core Capabilities
-- **Transcription**: MERaLiON-10B for accurate speech-to-text
-- **Emotion Recognition**: MERaLiON-10B for speaker emotion detection
-- **Speaker Diarization**: Pyannote.audio for who-spoke-when
-- **Speaker Identification**: SpeechBrain for speaker recognition
+- **Transcription**: Remote MERaLiON for accurate speech-to-text
+- **Emotion Recognition**: Remote MERaLiON for speaker emotion detection
+- **Summarization**: AWS SageMaker Qwen for conversation analysis
+- **Speaker Diarization**: Local Pyannote.audio for who-spoke-when
+- **Speaker Identification**: Local SpeechBrain for speaker recognition
 - **Persistent Speakers**: Cross-session speaker tracking
 - **Review Queue**: Enroll speakers from meeting recordings without dedicated enrollment sessions
 - **Voice Activity Detection**: Real-time VAD with WebSocket streaming
@@ -73,9 +73,10 @@ backend/
 - **SQLAlchemy**: ORM and database
 
 ### AI Models
-- **MERaLiON-10B**: Multi-modal LLM for audio (transcription + emotion)
-- **Pyannote.audio**: Speaker diarization
-- **SpeechBrain**: Speaker verification and identification
+- **MERaLiON** (remote endpoint): Multi-modal LLM for audio (transcription + emotion)
+- **Qwen** (AWS SageMaker): LLM for conversation summarization
+- **Pyannote.audio**: Speaker diarization (local)
+- **SpeechBrain**: Speaker verification and identification (local)
 
 ### Audio Processing
 - **librosa**: Audio analysis
@@ -92,13 +93,9 @@ backend/
 Quick start:
 ```bash
 # Build images
-podman build -t meraudio-backend -f Dockerfile .
-podman build -t meraudio-celery-worker -f Dockerfile.celery .
-podman build -t meraudio-meralion -f Dockerfile.meralion .
-podman build -t meraudio-frontend -f frontend/Dockerfile frontend/
-# Start services
+./build-images.sh
 
-```bash
+# Start services
 ./start-services.sh
 ```
 

@@ -149,14 +149,19 @@ const RecordingHistory: React.FC<RecordingHistoryProps> = ({ onRecordingSelect }
   };
 
   const convertToAnalysisResult = (recording: Recording, result: ProcessingResult): AudioAnalysisResult => {
+    // Use dominant emotion from processing result for all segments
+    const dominantEmotion = result.dominant_emotion || 'neutral';
+    const emotionConfidence = result.emotion_confidence || 0;
+
     // Convert speaker segments to the format expected by TranscriptViewer
     const segments = result.speaker_segments.map(segment => ({
       start_time: segment.start_time,
       end_time: segment.end_time,
       speaker_id: segment.speaker_name || segment.speaker_label,
       text: segment.segment_text || '',
-      emotion: 'neutral', // We'll extract from emotions_json if available
-      emotion_confidence: segment.confidence || 0
+      emotion: dominantEmotion,
+      emotion_confidence: emotionConfidence,
+      confidence: segment.confidence || 0
     }));
 
     // Create speakers list from unique segment speakers

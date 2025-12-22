@@ -18,6 +18,7 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
   const [enrolling, setEnrolling] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [playingSegmentIndex, setPlayingSegmentIndex] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const API_BASE = ''; // Use relative URLs to go through nginx proxy
@@ -70,29 +71,7 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
     // Initialize with all segments selected
     setSelectedSegments(item.segments.map((_, idx) => idx));
     setUseAllSegments(false); // Changed to false so users can review segments
-
-    // Load audio for this item
-    await loadAudio(item.id);
-  };
-
-  const loadAudio = async (reviewId: number) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/v1/review-queue/${reviewId}/audio`);
-      if (!response.ok) throw new Error('Failed to load audio');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-
-      // Revoke old URL if exists
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
-
-      setAudioUrl(url);
-    } catch (err) {
-      console.error('Failed to load audio:', err);
-      setError('Failed to load audio preview');
-    }
+    setPlayingSegmentIndex(null); // Reset playing segment
   };
 
   const handleEnroll = async () => {
@@ -134,11 +113,6 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Enrollment failed');
       }
-
-      const result = await response.json();
-
-      // Show success message
-      alert(`✅ ${result.message}\n\nSpeaker ID: ${result.speaker_id}\nEmbeddings: ${result.embeddings_count}\nDuration: ${result.total_duration.toFixed(1)}s`);
 
       // Refresh the queue
       await fetchReviewQueue();
@@ -264,20 +238,37 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
 
   const playSegment = async (reviewId: number, segmentIndex: number) => {
     try {
+      // If already playing this segment, pause it
+      if (playingSegmentIndex === segmentIndex && audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+        setPlayingSegmentIndex(null);
+        return;
+      }
+
+      // Fetch the specific segment audio
       const response = await fetch(`${API_BASE}/api/v1/review-queue/${reviewId}/audio?segment_index=${segmentIndex}`);
       if (!response.ok) throw new Error('Failed to load segment audio');
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
 
-      // Create temporary audio element to play this segment
-      const audio = new Audio(url);
-      audio.play();
+      // Revoke old URL if exists
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
 
-      // Cleanup after playing
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-      };
+      // Set the new audio URL and update playing segment
+      setAudioUrl(url);
+      setPlayingSegmentIndex(segmentIndex);
+
+      // Use setTimeout to ensure the audio element is updated before playing
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.play().catch(err => {
+            console.error('Failed to play audio:', err);
+          });
+        }
+      }, 100);
     } catch (err) {
       console.error('Failed to play segment:', err);
       setError('Failed to play segment audio');
@@ -378,12 +369,6 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
                       <span className="info-label">🎤</span>
                       <span className="info-value">{item.segment_count} segments • {formatDuration(item.total_duration)}</span>
                     </div>
-                    {item.audio_quality && (
-                      <div className="info-row">
-                        <span className="info-label">📊</span>
-                        <span className="info-value">Quality: {(item.audio_quality * 100).toFixed(0)}%</span>
-                      </div>
-                    )}
                   </div>
                   {item.suggested_assignments && item.suggested_assignments.length > 0 && (
                     <div className="suggested-matches">
@@ -427,9 +412,6 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
                   <h3>📊 Statistics</h3>
                   <p>Segments: {selectedItem.segment_count}</p>
                   <p>Total Duration: {formatDuration(selectedItem.total_duration)}</p>
-                  {selectedItem.audio_quality && (
-                    <p>Audio Quality: {(selectedItem.audio_quality * 100).toFixed(0)}%</p>
-                  )}
                 </div>
 
                 {selectedItem.suggested_assignments && selectedItem.suggested_assignments.length > 0 && (
@@ -442,18 +424,6 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-
-              {/* Audio Player */}
-              <div className="audio-player-section">
-                <h3>🎵 Audio Preview</h3>
-                {audioUrl ? (
-                  <audio ref={audioRef} controls className="audio-player" src={audioUrl}>
-                    Your browser does not support audio playback.
-                  </audio>
-                ) : (
-                  <p>Loading audio...</p>
                 )}
               </div>
 
@@ -474,11 +444,27 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
                     </div>
                   </div>
                 </div>
+
+                {/* Audio Player - Only shows when playing a segment */}
+                {audioUrl && playingSegmentIndex !== null && selectedItem.segments[playingSegmentIndex] && (
+                  <div className="audio-player-section">
+                    <div className="now-playing">
+                      <span className="now-playing-label">🎵 Now Playing:</span>
+                      <span className="now-playing-segment">
+                        Segment {playingSegmentIndex + 1} ({formatTime(selectedItem.segments[playingSegmentIndex].start_time)} - {formatTime(selectedItem.segments[playingSegmentIndex].end_time)})
+                      </span>
+                    </div>
+                    <audio ref={audioRef} controls className="audio-player" src={audioUrl} onEnded={() => setPlayingSegmentIndex(null)}>
+                      Your browser does not support audio playback.
+                    </audio>
+                  </div>
+                )}
+
                 <div className="segments-list">
                   {selectedItem.segments.map((segment, idx) => (
                     <div
                       key={idx}
-                      className={`segment-item ${selectedSegments.includes(idx) ? 'selected' : 'deselected'}`}
+                      className={`segment-item ${selectedSegments.includes(idx) ? 'selected' : 'deselected'} ${playingSegmentIndex === idx ? 'playing' : ''}`}
                     >
                       <div className="segment-header">
                         <input
@@ -491,11 +477,11 @@ const ReviewQueue: React.FC<ReviewQueueProps> = ({ onBack }) => {
                         </span>
                         <span className="segment-duration">({segment.duration.toFixed(1)}s)</span>
                         <button
-                          className="play-segment-btn"
+                          className={`play-segment-btn ${playingSegmentIndex === idx ? 'playing' : ''}`}
                           onClick={() => playSegment(selectedItem.id, idx)}
-                          title="Play this segment"
+                          title={playingSegmentIndex === idx ? 'Pause' : 'Play this segment'}
                         >
-                          ▶️
+                          {playingSegmentIndex === idx ? '⏸️' : '▶️'}
                         </button>
                       </div>
                       {segment.text && (

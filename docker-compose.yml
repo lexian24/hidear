@@ -17,39 +17,6 @@ services:
     networks:
       - meraudio-network
 
-  # MERaLiON Worker - Transcription + Emotion (GPU required)
-  meralion:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.meralion
-    container_name: meraudio-meralion
-    environment:
-      - MERALION_MODEL=${MERALION_MODEL:-MERaLiON/MERaLiON-2-10B}
-      - MERALION_PORT=${MERALION_INTERNAL_PORT:-8001}
-      - HF_HOME=/app/models
-      - TRANSFORMERS_CACHE=/app/models
-      - HF_TOKEN=${HF_TOKEN}
-      - CUDA_VISIBLE_DEVICES=${GPU_ID:-0}
-    volumes:
-      - ./backend/audio_files:/app/audio_files
-      - meralion_models:/app/models
-    ports:
-      - "${MERALION_PORT:-9428}:${MERALION_INTERNAL_PORT:-8001}"
-    networks:
-      - meraudio-network
-    # Podman GPU access via device mapping
-    devices:
-      - nvidia.com/gpu=all
-    security_opt:
-      - label=disable
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:${MERALION_INTERNAL_PORT:-8001}/health')"]
-      interval: 30s
-      timeout: 10s
-      start_period: 120s
-      retries: 3
-
   # FastAPI Backend
   backend:
     build:
@@ -62,17 +29,21 @@ services:
       - ./backend/speaker_profiles:/app/speaker_profiles
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - MERALION_SERVICE_URL=http://meralion:${MERALION_INTERNAL_PORT:-8001}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./meraudio.db}
       - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
       - PORT=${BACKEND_INTERNAL_PORT:-8000}
+      - MERALION_ENDPOINT_URL=${MERALION_ENDPOINT_URL}
+      - QWEN_SAGEMAKER_ENDPOINT=${QWEN_SAGEMAKER_ENDPOINT}
+      - QWENVL_AWS_ACCESS_KEY_ID=${QWENVL_AWS_ACCESS_KEY_ID}
+      - QWENVL_AWS_SECRET_ACCESS_KEY=${QWENVL_AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-southeast-1}
     ports:
       - "${BACKEND_PORT:-9427}:${BACKEND_INTERNAL_PORT:-8000}"  # External: 9427, Internal: 8000
     depends_on:
       redis:
         condition: service_healthy
-      meralion:
-        condition: service_started
     restart: unless-stopped
     networks:
       - meraudio-network
@@ -90,15 +61,17 @@ services:
       - celery_models:/app/models
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - MERALION_SERVICE_URL=http://meralion:${MERALION_INTERNAL_PORT:-8001}
       - HF_TOKEN=${HF_TOKEN}
       - HF_HOME=/app/models
       - TRANSFORMERS_CACHE=/app/models
+      - MERALION_ENDPOINT_URL=${MERALION_ENDPOINT_URL}
+      - QWEN_SAGEMAKER_ENDPOINT=${QWEN_SAGEMAKER_ENDPOINT}
+      - QWENVL_AWS_ACCESS_KEY_ID=${QWENVL_AWS_ACCESS_KEY_ID}
+      - QWENVL_AWS_SECRET_ACCESS_KEY=${QWENVL_AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-southeast-1}
     depends_on:
       redis:
         condition: service_healthy
-      meralion:
-        condition: service_started
     restart: unless-stopped
     networks:
       - meraudio-network
@@ -134,8 +107,6 @@ services:
 
 volumes:
   redis_data:
-    driver: local
-  meralion_models:
     driver: local
   celery_models:
     driver: local

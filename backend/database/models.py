@@ -184,7 +184,7 @@ class PersistentSpeaker(Base):
     
     # Speaker recognition settings
     confidence_threshold = Column(Float, default=0.75)  # Minimum confidence for auto-assignment
-    is_active = Column(Boolean, default=True)  # Whether to include in recognition
+    is_active = Column(Boolean, default=False)  # Whether to include in recognition
     
     # Compressed average embedding for fast similarity search
     avg_embedding = Column(LargeBinary, nullable=True)  # Compressed numpy array

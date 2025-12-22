@@ -8,12 +8,11 @@ from pathlib import Path
 
 class Settings:
     def __init__(self):
-        # Model configuration
-        self.whisper_model_size = os.getenv("WHISPER_MODEL_SIZE", "base")  # tiny, base, small, medium, large
+        # HuggingFace configuration
         self.huggingface_token = os.getenv("HUGGINGFACE_TOKEN", None)
 
         # Audio processing settings
-        self.max_file_size = 50 * 1024 * 1024  # 50MB
+        self.max_file_size = 500 * 1024 * 1024  # 500MB
         self.allowed_extensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
 
         # Server settings

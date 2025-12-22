@@ -108,7 +108,7 @@ class ReviewQueueService:
             review_item: Review item from database
 
         Returns:
-            Formatted ReviewQueueItem
+            Formatted ReviewQueueItem with populated segments
         """
         try:
             # Get recording info
@@ -149,6 +149,30 @@ class ReviewQueueService:
                 except Exception as parse_err:
                     logger.warning(f"Failed to parse suggested assignments: {parse_err}")
 
+            # Fetch segments for this speaker from the recording
+            segments = []
+            try:
+                db_segments = await self.db.speaker_segments.get_segments_for_speaker_in_recording(
+                    review_item.recording_id,
+                    review_item.session_speaker_label
+                )
+
+                # Transform database segments to AudioSegment schema
+                for db_segment in db_segments:
+                    segment = AudioSegmentSchema(
+                        start_time=db_segment.start_time,
+                        end_time=db_segment.end_time,
+                        duration=db_segment.duration,
+                        text=db_segment.text if hasattr(db_segment, 'text') else None,
+                        confidence=db_segment.confidence if hasattr(db_segment, 'confidence') else None
+                    )
+                    segments.append(segment)
+
+                logger.info(f"Fetched {len(segments)} segments for {review_item.session_speaker_label}")
+            except Exception as segment_err:
+                logger.warning(f"Failed to fetch segments for review {review_item.id}: {segment_err}")
+                # Continue without segments rather than failing the whole request
+
             return ReviewQueueItem(
                 id=review_item.id,
                 recording_id=review_item.recording_id,
@@ -160,7 +184,7 @@ class ReviewQueueService:
                 segment_count=review_item.segment_count or 0,
                 total_duration=review_item.total_duration or 0.0,
                 audio_quality=review_item.audio_quality,
-                segments=[],  # Empty as segments are tied to processing results
+                segments=segments,  # Now populated with actual speaker segments
                 resolved_speaker_id=review_item.resolved_speaker_id,
                 resolution_method=review_item.resolution_method,
                 created_at=review_item.created_at,
@@ -201,18 +225,20 @@ class ReviewQueueService:
             logger.error(f"Failed to get review stats: {e}", exc_info=True)
             raise Exception(f"Failed to get review stats: {str(e)}")
 
-    async def get_review_audio(self, review_id: int) -> str:
+    async def get_review_audio(self, review_id: int, segment_index: Optional[int] = None) -> str:
         """
-        Get audio file path for a review item.
+        Get audio file for a specific segment from a review item.
 
-        Extracts and concatenates only the segments for this specific speaker,
-        so reviewers can hear isolated speaker audio without other speakers.
+        Returns individual speaker segments for independent playback and selection,
+        allowing users to choose which segments to include before enrollment.
 
         Args:
             review_id: The review item ID
+            segment_index: Optional specific segment index (0-based).
+                          If None, merges all segments (for backward compatibility)
 
         Returns:
-            Path to temporary audio file containing only this speaker's segments
+            Path to temporary audio file containing the requested segment(s)
         """
         try:
             # Get review item
@@ -247,27 +273,44 @@ class ReviewQueueService:
             # Load full audio
             full_audio = PydubAudioSegment.from_file(audio_file_path)
 
-            # Extract and concatenate only this speaker's segments
-            speaker_audio_parts = []
-            for segment in segments:
+            # Extract specific segment or all segments
+            if segment_index is not None:
+                # Single segment playback
+                if segment_index < 0 or segment_index >= len(segments):
+                    raise Exception(f"Invalid segment index {segment_index}. Valid range: 0-{len(segments)-1}")
+
+                segment = segments[segment_index]
                 start_ms = int(segment.start_time * 1000)
                 end_ms = int(segment.end_time * 1000)
-                segment_audio = full_audio[start_ms:end_ms]
-                speaker_audio_parts.append(segment_audio)
+                audio_to_save = full_audio[start_ms:end_ms]
 
-            # Concatenate all segments
-            if len(speaker_audio_parts) == 0:
-                raise Exception(f"No audio segments extracted for {speaker_label}")
+                logger.info(f"Extracting segment {segment_index}:")
+                logger.info(f"  Start time: {segment.start_time}s ({start_ms}ms)")
+                logger.info(f"  End time: {segment.end_time}s ({end_ms}ms)")
+                logger.info(f"  Duration: {segment.duration:.2f}s")
+                logger.info(f"  Full audio length: {len(full_audio)}ms ({len(full_audio)/1000:.2f}s)")
+                logger.info(f"  Extracted audio length: {len(audio_to_save)}ms ({len(audio_to_save)/1000:.2f}s)")
+            else:
+                # Merge all segments (for backward compatibility or full preview)
+                speaker_audio_parts = []
+                for segment in segments:
+                    start_ms = int(segment.start_time * 1000)
+                    end_ms = int(segment.end_time * 1000)
+                    segment_audio = full_audio[start_ms:end_ms]
+                    speaker_audio_parts.append(segment_audio)
 
-            combined_audio = speaker_audio_parts[0]
-            for audio_part in speaker_audio_parts[1:]:
-                combined_audio += audio_part
+                if len(speaker_audio_parts) == 0:
+                    raise Exception(f"No audio segments extracted for {speaker_label}")
 
-            logger.info(f"Combined audio duration: {len(combined_audio) / 1000.0:.2f}s")
+                audio_to_save = speaker_audio_parts[0]
+                for audio_part in speaker_audio_parts[1:]:
+                    audio_to_save += audio_part
+
+                logger.info(f"Merged all {len(segments)} segments: {len(audio_to_save) / 1000.0:.2f}s total")
 
             # Save to temporary file
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-            combined_audio.export(temp_file.name, format='wav')
+            audio_to_save.export(temp_file.name, format='wav')
             temp_file.close()
 
             return temp_file.name
@@ -279,17 +322,21 @@ class ReviewQueueService:
     async def enroll_speaker_from_review(
         self,
         review_id: int,
-        speaker_name: str
+        speaker_name: str,
+        use_all_segments: bool = True,
+        selected_segment_indices: Optional[List[int]] = None
     ) -> Dict[str, Any]:
         """
-        Enroll a new speaker using only their segments from a review item.
+        Enroll a new speaker using selected segments from a review item.
 
-        Extracts and uses only the specific speaker's segments for enrollment,
-        ensuring clean speaker profiles without contamination from other speakers.
+        Allows users to select which specific segments to include in the enrollment,
+        providing fine-grained control over the audio used for speaker profiling.
 
         Args:
             review_id: The review item ID
             speaker_name: Name for the new speaker
+            use_all_segments: If True, use all segments (ignore selected_segment_indices)
+            selected_segment_indices: List of segment indices to use if use_all_segments is False
 
         Returns:
             Dictionary with enrollment result
@@ -323,22 +370,40 @@ class ReviewQueueService:
             if not segments:
                 raise Exception(f"No audio segments found for {speaker_label}")
 
-            logger.info(f"Found {len(segments)} segments for {speaker_label}, extracting audio...")
+            # Determine which segments to use
+            if use_all_segments:
+                segments_to_use = list(range(len(segments)))
+                logger.info(f"Using all {len(segments)} segments for {speaker_label}")
+            else:
+                if not selected_segment_indices:
+                    raise Exception("selected_segment_indices required when use_all_segments is False")
+
+                # Validate segment indices
+                for idx in selected_segment_indices:
+                    if idx < 0 or idx >= len(segments):
+                        raise Exception(f"Invalid segment index {idx}. Valid range: 0-{len(segments)-1}")
+
+                segments_to_use = selected_segment_indices
+                logger.info(f"Using {len(segments_to_use)} selected segments out of {len(segments)} for {speaker_label}: {segments_to_use}")
+
+            logger.info(f"Found {len(segments)} total segments for {speaker_label}, extracting {len(segments_to_use)} selected segments...")
 
             # Load full audio
             full_audio = PydubAudioSegment.from_file(audio_file_path)
 
-            # Extract and concatenate only this speaker's segments
+            # Extract only selected speaker segments
             speaker_audio_parts = []
-            for segment in segments:
+            for idx in segments_to_use:
+                segment = segments[idx]
                 start_ms = int(segment.start_time * 1000)
                 end_ms = int(segment.end_time * 1000)
                 segment_audio = full_audio[start_ms:end_ms]
                 speaker_audio_parts.append(segment_audio)
+                logger.info(f"  Segment {idx}: {segment.duration:.2f}s")
 
-            # Concatenate all segments
+            # Merge selected segments
             if len(speaker_audio_parts) == 0:
-                raise Exception(f"No audio segments extracted for {speaker_label}")
+                raise Exception(f"No audio segments selected for {speaker_label}")
 
             combined_audio = speaker_audio_parts[0]
             for audio_part in speaker_audio_parts[1:]:
@@ -360,7 +425,7 @@ class ReviewQueueService:
 
             try:
                 logger.info(f"Enrolling speaker '{speaker_name}' from review {review_id}, "
-                           f"speaker segments duration: {total_duration:.2f}s")
+                           f"using {len(segments_to_use)} segments ({total_duration:.2f}s total)")
 
                 # Initialize speaker identifier and manager
                 speaker_identifier = SpeakerIdentifier()

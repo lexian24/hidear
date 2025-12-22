@@ -40,12 +40,6 @@ RUN mkdir -p /app/audio_files /app/models /app/speaker_profiles /app/logs
 # Set Python path
 ENV PYTHONPATH=/app
 
-# Copy entrypoint script that configures git with HF token before running commands
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
-ENTRYPOINT ["/app/entrypoint.sh"]
-
 # Run Celery worker
 # Models can be pre-downloaded to hidear_celery_models volume, or will be downloaded on first run
 CMD ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=2"]

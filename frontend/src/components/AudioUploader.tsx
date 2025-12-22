@@ -19,12 +19,12 @@ const AudioUploader: React.FC<AudioUploaderProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const validateFile = (file: File): string | null => {
-    const maxSize = 50 * 1024 * 1024; // 50MB
+    const maxSize = 500 * 1024 * 1024; // 500MB
     const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/m4a', 'audio/flac', 'audio/ogg'];
     const allowedExtensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg'];
 
     if (file.size > maxSize) {
-      return 'File size must be less than 50MB';
+      return 'File size must be less than 500MB';
     }
 
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -167,7 +167,7 @@ const AudioUploader: React.FC<AudioUploaderProps> = ({
               <div className="upload-icon">🎤</div>
               <h3>Upload Audio for FastAudio Analysis</h3>
               <p>Drop your audio file for processing</p>
-              <p className="file-types">Supported: .wav, .mp3, .m4a, .flac, .ogg (max 50MB)</p>
+              <p className="file-types">Supported: .wav, .mp3, .m4a, .flac, .ogg (max 500MB)</p>
               <input
                 type="file"
                 accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*"

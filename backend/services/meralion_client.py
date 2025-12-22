@@ -1,22 +1,27 @@
 """
-HTTP Client for MERaLiON Service
-Used by Celery worker to call MERaLiON service in separate container
+OpenAI SDK Client for Remote MERaLiON Service
+Calls OpenAI-compatible remote MERaLiON endpoint via OpenAI Python SDK
+Configured via MERALION_ENDPOINT_URL environment variable
+
+Uses base64-encoded audio for proper remote endpoint support.
 """
 import os
-import requests
+import re
 import logging
+import base64
+import json
 import numpy as np
 from typing import Tuple, Dict, Any, List, Optional
-import base64
-import io
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 
 class MERaLiONClient:
     """
-    HTTP client for MERaLiON service
-    Provides same interface as MERaLiONService but calls HTTP endpoint
+    OpenAI SDK client for remote OpenAI-compatible MERaLiON endpoint.
+    Handles transcription, emotion recognition, and summarization via OpenAI API.
+    Requires MERALION_ENDPOINT_URL environment variable to be set.
     """
 
     def __init__(self, base_url: str = None):
@@ -24,10 +29,24 @@ class MERaLiONClient:
         Initialize MERaLiON client
 
         Args:
-            base_url: URL of MERaLiON service (default: http://meralion:8001)
+            base_url: URL of remote MERaLiON service (OpenAI-compatible API)
         """
-        self.base_url = base_url or os.getenv("MERALION_SERVICE_URL", "http://meralion:8001")
+        # Use MERALION_ENDPOINT_URL for remote endpoint (e.g., http://192.168.140.226:8005/v1)
+        self.base_url = base_url or os.getenv("MERALION_ENDPOINT_URL")
+
+        if not self.base_url:
+            raise ValueError(
+                "MERALION_ENDPOINT_URL environment variable not set. "
+                "Please configure the remote MERaLiON endpoint URL."
+            )
+
         logger.info(f"MERaLiON client configured for: {self.base_url}")
+
+        # Initialize OpenAI client with custom base_url
+        self.client = OpenAI(
+            api_key="EMPTY",  # No authentication needed for internal endpoints
+            base_url=self.base_url,
+        )
 
         # Test connection
         self._check_connection()
@@ -35,13 +54,56 @@ class MERaLiONClient:
     def _check_connection(self):
         """Check if MERaLiON service is available"""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=5)
-            if response.status_code == 200:
-                logger.info("✅ Connected to MERaLiON service")
-            else:
-                logger.warning(f"MERaLiON service returned {response.status_code}")
+            models = self.client.models.list()
+            available_models = [model.id for model in models.data]
+            logger.info(f"✅ Connected to MERaLiON service")
+            logger.info(f"   Available models: {available_models}")
         except Exception as e:
             logger.warning(f"Cannot connect to MERaLiON service: {e}")
+
+    def _extract_audio_segment(self, audio_path: str, start_time: float = None, end_time: float = None) -> bytes:
+        """
+        Extract audio segment from file (in seconds).
+
+        Args:
+            audio_path: Path to audio file
+            start_time: Start time in seconds (None = from beginning)
+            end_time: End time in seconds (None = to end)
+
+        Returns:
+            Audio bytes for the segment
+        """
+        try:
+            import librosa
+            import soundfile as sf
+
+            # Load audio
+            y, sr = librosa.load(audio_path, sr=None)
+
+            # Calculate sample indices
+            start_sample = int(start_time * sr) if start_time is not None else 0
+            end_sample = int(end_time * sr) if end_time is not None else len(y)
+
+            # Extract segment
+            segment = y[start_sample:end_sample]
+
+            # Convert back to audio bytes
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                sf.write(tmp.name, segment, sr)
+                tmp_path = tmp.name
+
+            # Read and cleanup
+            with open(tmp_path, 'rb') as f:
+                audio_bytes = f.read()
+            os.unlink(tmp_path)
+
+            return audio_bytes
+
+        except Exception as e:
+            logger.warning(f"Failed to extract audio segment: {e}. Using full file.")
+            with open(audio_path, 'rb') as f:
+                return f.read()
 
     def transcribe_segment(
         self,
@@ -50,7 +112,7 @@ class MERaLiONClient:
         end_time: float = None
     ) -> str:
         """
-        Transcribe audio segment via HTTP call
+        Transcribe audio segment via OpenAI API with base64 encoding
 
         Args:
             audio_path: Path to audio file
@@ -61,34 +123,71 @@ class MERaLiONClient:
             Transcribed text
         """
         try:
-            # Prepare request payload
-            payload = {
-                "audio_path": audio_path,
-            }
+            logger.info(f"Transcribing segment from {audio_path} ({start_time}s to {end_time}s)")
 
-            if start_time is not None:
-                payload["start_time"] = start_time
-            if end_time is not None:
-                payload["end_time"] = end_time
-
-            # Call transcription endpoint
-            response = requests.post(
-                f"{self.base_url}/transcribe",
-                json=payload,
-                timeout=60  # Transcription can take time
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                text = result.get("text", "")
-                logger.debug(f"Transcribed segment: {text[:50]}...")
-                return text
+            # Extract audio segment
+            if start_time is not None or end_time is not None:
+                audio_bytes = self._extract_audio_segment(audio_path, start_time, end_time)
             else:
-                logger.error(f"Transcription failed: {response.status_code} - {response.text}")
+                with open(audio_path, 'rb') as f:
+                    audio_bytes = f.read()
+
+            # Encode to base64
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+
+            # Determine audio format from file extension
+            ext = os.path.splitext(audio_path)[1].lower()
+            audio_format = "ogg" if ext in [".ogg", ".opus"] else ext.strip(".")
+            if not audio_format:
+                audio_format = "wav"
+
+            # Build content with audio
+            content = [
+                {
+                    "type": "text",
+                    "text": "Please transcribe this audio."
+                },
+                {
+                    "type": "audio_url",
+                    "audio_url": {
+                        "url": f"data:audio/{audio_format};base64,{audio_base64}"
+                    },
+                },
+            ]
+
+            # Get available models
+            models = self.client.models.list()
+            available_models = [model.id for model in models.data]
+
+            if not available_models:
+                logger.error("No models available on MERaLiON endpoint")
                 return "[transcription failed]"
 
+            model_name = available_models[0]
+            logger.debug(f"Using model: {model_name}")
+
+            # Call MERaLiON endpoint
+            response = self.client.chat.completions.create(
+                model=model_name,
+                messages=[{
+                    "role": "user",
+                    "content": content,
+                }],
+                max_tokens=1024,
+                temperature=0.0,
+                top_p=0.9,
+            )
+
+            text = response.choices[0].message.content
+            # Remove any <SpeakerId>: prefixes that MERaLiON may have added
+            text_cleaned = re.sub(r'<[^>]+>:\s*', '', text)
+            logger.debug(f"Transcribed segment: {text_cleaned[:50]}...")
+            return text_cleaned
+
         except Exception as e:
-            logger.error(f"Transcription request failed: {e}")
+            logger.error(f"Transcription failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return "[transcription failed]"
 
     def predict_emotion(
@@ -98,7 +197,7 @@ class MERaLiONClient:
         end_time: float = None
     ) -> Tuple[str, float]:
         """
-        Predict emotion via HTTP call
+        Predict emotion via OpenAI API with base64 encoding
 
         Args:
             audio_path: Path to audio file
@@ -109,40 +208,84 @@ class MERaLiONClient:
             (emotion, confidence) tuple
         """
         try:
-            # Prepare request payload
-            payload = {
-                "audio_path": audio_path,
-            }
+            logger.info(f"Predicting emotion from {audio_path} ({start_time}s to {end_time}s)")
 
-            if start_time is not None:
-                payload["start_time"] = start_time
-            if end_time is not None:
-                payload["end_time"] = end_time
-
-            # Call emotion endpoint
-            response = requests.post(
-                f"{self.base_url}/emotion",
-                json=payload,
-                timeout=60
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                emotion = result.get("emotion", "neutral")
-                confidence = result.get("confidence", 0.5)
-                logger.debug(f"Predicted emotion: {emotion} ({confidence:.2f})")
-                return emotion, confidence
+            # Extract audio segment
+            if start_time is not None or end_time is not None:
+                audio_bytes = self._extract_audio_segment(audio_path, start_time, end_time)
             else:
-                logger.error(f"Emotion prediction failed: {response.status_code} - {response.text}")
+                with open(audio_path, 'rb') as f:
+                    audio_bytes = f.read()
+
+            # Encode to base64
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+
+            # Determine audio format from file extension
+            ext = os.path.splitext(audio_path)[1].lower()
+            audio_format = "ogg" if ext in [".ogg", ".opus"] else ext.strip(".")
+            if not audio_format:
+                audio_format = "wav"
+
+            # Build content with audio
+            content = [
+                {
+                    "type": "text",
+                    "text": "Describe the speaker's emotion in one simple word. Respond with only the emotion word and a confidence score (0-1) in JSON format like {\"emotion\": \"happy\", \"confidence\": 0.95}"
+                },
+                {
+                    "type": "audio_url",
+                    "audio_url": {
+                        "url": f"data:audio/{audio_format};base64,{audio_base64}"
+                    },
+                },
+            ]
+
+            # Get available models
+            models = self.client.models.list()
+            available_models = [model.id for model in models.data]
+
+            if not available_models:
+                logger.error("No models available on MERaLiON endpoint")
                 return "neutral", 0.5
 
+            model_name = available_models[0]
+
+            # Call MERaLiON endpoint
+            response = self.client.chat.completions.create(
+                model=model_name,
+                messages=[{
+                    "role": "user",
+                    "content": content,
+                }],
+                max_tokens=256,
+                temperature=0.0,
+                top_p=0.9,
+            )
+
+            result_text = response.choices[0].message.content
+
+            # Parse JSON response
+            try:
+                result = json.loads(result_text)
+                emotion = result.get("emotion", "neutral").lower()
+                confidence = float(result.get("confidence", 0.5))
+            except (json.JSONDecodeError, ValueError):
+                # Fallback: extract first word as emotion
+                emotion = result_text.split()[0].lower() if result_text else "neutral"
+                confidence = 0.5
+
+            logger.debug(f"Predicted emotion: {emotion} ({confidence:.2f})")
+            return emotion, confidence
+
         except Exception as e:
-            logger.error(f"Emotion request failed: {e}")
+            logger.error(f"Emotion prediction failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return "neutral", 0.5
 
     def transcribe_audio_array(self, audio_data: np.ndarray, sample_rate: int = 16000) -> str:
         """
-        Transcribe audio array via HTTP call
+        Transcribe audio array via OpenAI API with base64 encoding
 
         Args:
             audio_data: Audio samples as numpy array
@@ -152,39 +295,32 @@ class MERaLiONClient:
             Transcribed text
         """
         try:
-            # Convert numpy array to base64 for transmission
-            buffer = io.BytesIO()
-            np.save(buffer, audio_data)
-            buffer.seek(0)
-            audio_b64 = base64.b64encode(buffer.read()).decode('utf-8')
+            import soundfile as sf
+            import tempfile
 
-            # Prepare request payload
-            payload = {
-                "audio_data": audio_b64,
-                "sample_rate": sample_rate
-            }
+            # Convert numpy array to WAV format
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                sf.write(tmp.name, audio_data, sample_rate)
+                tmp_path = tmp.name
 
-            # Call array transcription endpoint
-            response = requests.post(
-                f"{self.base_url}/transcribe_array",
-                json=payload,
-                timeout=60
-            )
+            # Use transcribe_segment with the temporary file
+            result = self.transcribe_segment(tmp_path)
 
-            if response.status_code == 200:
-                result = response.json()
-                return result.get("text", "")
-            else:
-                logger.error(f"Array transcription failed: {response.status_code}")
-                return ""
+            # Cleanup
+            os.unlink(tmp_path)
+
+            return result
 
         except Exception as e:
-            logger.error(f"Array transcription request failed: {e}")
-            return ""
+            logger.error(f"Array transcription failed: {e}")
+            return "[transcription failed]"
 
     def summarize(self, transcription: str, speaker_segments: List[Dict] = None) -> Dict[str, str]:
         """
-        Summarize transcription via HTTP call
+        Summarize transcription using remote text LLM
+
+        For now, this uses MERaLiON's text capability.
+        TODO: Integrate with SageMaker Qwen for better summarization.
 
         Args:
             transcription: Full transcribed text
@@ -200,47 +336,116 @@ class MERaLiONClient:
             }
         """
         try:
-            payload = {
-                "transcription": transcription,
-                "speaker_segments": speaker_segments or []
-            }
+            logger.info(f"Generating summary for {len(transcription)} characters of transcription")
 
-            response = requests.post(
-                f"{self.base_url}/summarize",
-                json=payload,
-                timeout=120  # Summarization may take longer
-            )
+            # Build speaker context
+            speaker_context = ""
+            if speaker_segments:
+                for seg in speaker_segments:
+                    speaker_id = seg.get('speaker_id', 'Unknown')
+                    text = seg.get('text', '')
+                    emotion = seg.get('emotion', 'neutral')
+                    speaker_context += f"{speaker_id}: {text} (emotion: {emotion})\n"
 
-            if response.status_code == 200:
-                result = response.json()
-                logger.info(f"Summary generated: {result.get('intention', '')[:50]}...")
-                return result
-            else:
-                logger.error(f"Summarization failed: {response.status_code} - {response.text}")
+            # Prepare prompts for summarization
+            intention_prompt = f"""Analyze this conversation and in 1-2 sentences, what is the main purpose/intention of this conversation?
+
+Conversation:
+{speaker_context or transcription}"""
+
+            conclusion_prompt = f"""Analyze this conversation and in 2-3 sentences, what is the key conclusion or outcome?
+
+Conversation:
+{speaker_context or transcription}"""
+
+            # Get available models
+            models = self.client.models.list()
+            available_models = [model.id for model in models.data]
+
+            if not available_models:
+                logger.error("No models available on MERaLiON endpoint")
                 return {
                     "intention": "[summarization failed]",
                     "conclusion": "",
-                    "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+                    "speaker_pov": {},
+                    "model": "unknown",
                     "generated_at": ""
                 }
 
-        except Exception as e:
-            logger.error(f"Summarization request failed: {e}")
+            model_name = available_models[0]
+
+            # Generate intention
+            response_intention = self.client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": intention_prompt}],
+                max_tokens=256,
+                temperature=0.0,
+            )
+            intention = response_intention.choices[0].message.content
+
+            # Generate conclusion
+            response_conclusion = self.client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": conclusion_prompt}],
+                max_tokens=512,
+                temperature=0.0,
+            )
+            conclusion = response_conclusion.choices[0].message.content
+
+            # Generate speaker POV
+            speaker_pov = {}
+            if speaker_segments:
+                unique_speakers = {}
+                for seg in speaker_segments:
+                    speaker_id = seg.get('speaker_id', 'Unknown')
+                    if speaker_id not in unique_speakers:
+                        unique_speakers[speaker_id] = seg.get('text', '')
+
+                for speaker_id in unique_speakers.keys():  # Generate POV for all speakers
+                    pov_prompt = f"""Analyze this conversation and in 1-2 sentences, what is the point of view from {speaker_id}'s perspective?
+
+Conversation:
+{speaker_context or transcription}"""
+
+                    response_pov = self.client.chat.completions.create(
+                        model=model_name,
+                        messages=[{"role": "user", "content": pov_prompt}],
+                        max_tokens=256,
+                        temperature=0.0,
+                    )
+                    speaker_pov[speaker_id] = response_pov.choices[0].message.content
+
+            logger.info(f"Summary generated successfully")
+
             return {
-                "intention": f"[Error: {str(e)}]",
+                "intention": intention,
+                "conclusion": conclusion,
+                "speaker_pov": speaker_pov,
+                "model": model_name,
+                "generated_at": ""
+            }
+
+        except Exception as e:
+            logger.error(f"Summarization failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                "intention": f"[Error: {str(e)[:100]}]",
                 "conclusion": "",
-                "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+                "speaker_pov": {},
+                "model": "unknown",
                 "generated_at": ""
             }
 
     def get_info(self) -> Dict[str, Any]:
-        """Get model information via HTTP call"""
+        """Get model information from endpoint"""
         try:
-            response = requests.get(f"{self.base_url}/info", timeout=5)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return {"error": "Cannot fetch info"}
+            models = self.client.models.list()
+            model_list = [{"id": model.id, "object": model.object} for model in models.data]
+            return {
+                "models": model_list,
+                "endpoint": self.base_url
+            }
         except Exception as e:
             logger.error(f"Info request failed: {e}")
             return {"error": str(e)}

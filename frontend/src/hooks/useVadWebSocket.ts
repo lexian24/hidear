@@ -119,14 +119,18 @@ export const useVadWebSocket = (url: string): UseVadWebSocketReturn => {
   }, []);
 
   const startStreaming = useCallback(() => {
-    if (!isConnected) {
-      console.log('❌ Cannot start streaming: not connected to WebSocket');
+    // Check actual WebSocket state instead of React state
+    if (!websocketRef.current || websocketRef.current.readyState !== WebSocket.OPEN) {
+      console.log('❌ Cannot start streaming: WebSocket not ready', {
+        exists: !!websocketRef.current,
+        readyState: websocketRef.current?.readyState
+      });
       setError('Not connected to WebSocket');
       return;
     }
     setIsStreaming(true);
     console.log('✅ Started VAD streaming - ready to send audio chunks');
-  }, [isConnected]);
+  }, []);
 
   const stopStreaming = useCallback(() => {
     setIsStreaming(false);

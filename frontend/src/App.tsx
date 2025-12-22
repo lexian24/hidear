@@ -124,7 +124,7 @@ function App() {
       <aside className="sidebar glass-panel">
         <div className="sidebar-header">
           <div className="logo">Hidear</div>
-          <div className="version">v2.0</div>
+          <div className="version">v1.0.0</div>
         </div>
 
         <nav className="sidebar-nav">

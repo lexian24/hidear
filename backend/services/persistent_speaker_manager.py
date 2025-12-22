@@ -351,7 +351,8 @@ class PersistentSpeakerManager:
             
             # Step 4: Create persistent speaker
             overall_quality = np.mean([meta['quality_score'] for meta in embedding_metadata])
-            
+            total_duration = sum([meta['duration'] for meta in embedding_metadata])
+
             persistent_speaker = await self.db.persistent_speakers.create_persistent_speaker(
                 name=speaker_name,
                 embeddings=embeddings,
@@ -359,11 +360,16 @@ class PersistentSpeakerManager:
                     'enrollment_segments': len(selected_segments),
                     'overall_quality': overall_quality,
                     'source_recording_id': recording_id,
-                    'segment_metadata': embedding_metadata
+                    'segment_metadata': embedding_metadata,
+                    'total_duration': total_duration
                 },
                 first_seen_recording_id=recording_id,
                 enrollment_method="auto_segment"
             )
+
+            # Update speaker with total speaking time
+            persistent_speaker.total_speaking_time = total_duration
+            await self.db.commit()
             
             # Step 5: Store individual embeddings
             for i, (embedding, metadata) in enumerate(zip(embeddings, embedding_metadata)):
@@ -654,13 +660,23 @@ class PersistentSpeakerManager:
         """
         try:
             logger.info(f"Enrolling speaker '{speaker_name}' from {len(audio_files)} files")
-            
+
             # Extract embeddings from each file
             embeddings = []
             quality_scores = []
-            
+            file_durations = []
+
             for audio_file in audio_files:
                 try:
+                    # Get audio duration
+                    try:
+                        audio = AudioSegment.from_file(audio_file)
+                        duration = len(audio) / 1000.0  # Convert ms to seconds
+                        file_durations.append(duration)
+                    except Exception as e:
+                        logger.warning(f"Could not determine duration for {audio_file}: {e}")
+                        file_durations.append(0)
+
                     # Generate embedding for this file
                     embedding, quality_info = self.speaker_identifier.extract_embedding(audio_file)
                     if embedding is not None:
@@ -671,7 +687,7 @@ class PersistentSpeakerManager:
                         logger.debug(f"Generated embedding for {audio_file}")
                     else:
                         logger.warning(f"Failed to generate embedding for {audio_file}")
-                        
+
                 except Exception as e:
                     logger.warning(f"Error processing {audio_file}: {e}")
                     continue
@@ -686,13 +702,18 @@ class PersistentSpeakerManager:
             # Calculate enrollment quality
             avg_quality = np.mean(quality_scores)
             consistency_score = self._calculate_embedding_consistency(embeddings)
-            
+            total_duration = sum(file_durations)
+
             # Create persistent speaker
             persistent_speaker = await self.db.persistent_speakers.create_persistent_speaker(
                 name=speaker_name,
                 embeddings=embeddings
             )
-            
+
+            # Update speaker with total speaking time
+            persistent_speaker.total_speaking_time = total_duration
+            await self.db.commit()
+
             # Save individual embeddings
             for i, embedding in enumerate(embeddings):
                 try:

@@ -38,49 +38,31 @@ class SpeakerDiarizer:
         self._load_pipeline()
     
     def _load_pipeline(self):
-        """Load pyannote speaker diarization pipeline from disk or HuggingFace Hub"""
-        from pathlib import Path
-
+        """Load pyannote speaker diarization pipeline from HuggingFace Hub"""
         try:
             logger.info("Loading pyannote speaker diarization model...")
 
-            # First, try to load from cached disk location (offline mode)
-            hf_home = os.getenv("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
-            cached_model_path = Path(hf_home) / "hub" / "models--pyannote--speaker-diarization-community-1"
+            # Get auth token from environment if available
+            auth_token = os.getenv("HUGGINGFACE_TOKEN")
 
-            if cached_model_path.exists():
-                logger.info(f"📁 Loading from disk cache: {cached_model_path}")
-                try:
-                    self.pipeline = Pipeline.from_pretrained(str(cached_model_path))
-                    logger.info("✅ Model loaded from disk (offline mode)")
-                except Exception as e:
-                    logger.warning(f"Failed to load from disk cache: {e}")
-                    logger.info("Falling back to HuggingFace Hub download...")
-                    self.pipeline = None
-
-            # If not cached on disk, download from HuggingFace Hub
-            if self.pipeline is None:
-                # Get auth token from environment if available
-                auth_token = os.getenv("HUGGINGFACE_TOKEN")
-
-                # Load the pretrained pipeline
-                # pyannote.audio 4.0+ uses token parameter (not use_auth_token)
-                try:
-                    logger.info("📥 Downloading from HuggingFace Hub (community version)...")
+            # Load the pretrained pipeline from HuggingFace Hub
+            # pyannote.audio 4.0+ uses token parameter (not use_auth_token)
+            try:
+                logger.info("Downloading from HuggingFace Hub (community version)...")
+                self.pipeline = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-community-1",
+                    token=auth_token if auth_token else True
+                )
+            except TypeError as e:
+                if "use_auth_token" in str(e) or "token" in str(e):
+                    # Fallback for older pyannote.audio versions
+                    logger.info("Retrying with use_auth_token parameter...")
                     self.pipeline = Pipeline.from_pretrained(
                         "pyannote/speaker-diarization-community-1",
-                        token=auth_token if auth_token else True
+                        use_auth_token=auth_token if auth_token else True
                     )
-                except TypeError as e:
-                    if "use_auth_token" in str(e) or "token" in str(e):
-                        # Fallback for older pyannote.audio versions
-                        logger.info("Retrying with use_auth_token parameter...")
-                        self.pipeline = Pipeline.from_pretrained(
-                            "pyannote/speaker-diarization-community-1",
-                            use_auth_token=auth_token if auth_token else True
-                        )
-                    else:
-                        raise
+                else:
+                    raise
 
             # Move to GPU if available
             if torch.cuda.is_available():
@@ -91,7 +73,7 @@ class SpeakerDiarizer:
 
         except Exception as e:
             logger.error(f"Failed to load speaker diarization model: {e}")
-            logger.info("💡 Tip: Run 'python backend/download_models.py' to cache models locally")
+            logger.info("💡 The model will be downloaded from HuggingFace Hub on first use. Make sure HF_TOKEN is set.")
             raise
     
     def diarize(self, audio_path: str, max_speakers: int = None) -> Any:

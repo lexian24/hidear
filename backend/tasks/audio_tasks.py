@@ -19,7 +19,7 @@ from celery_app import celery_app
 from sqlalchemy.orm import Session
 
 # Import services
-from services.enhanced_audio_processor import EnhancedAudioProcessor
+from services.audio_processor import AudioProcessor
 from database.config import SessionLocal
 from database.models import ProcessingTask, Recording
 from database.services import DatabaseService
@@ -111,7 +111,7 @@ def process_audio_file(
             db.commit()
 
         # Initialize audio processor
-        processor = EnhancedAudioProcessor(db_service=db_service)
+        processor = AudioProcessor(db_service=db_service)
 
         # Process audio with persistent speakers
         start_time = time.time()
@@ -127,10 +127,14 @@ def process_audio_file(
         # Save processing results to database
         logger.info(f"Saving processing results to database for recording {recording_id}")
 
-        # Prepare transcription
+        # Prepare transcription (already cleaned in MERaLiONClient)
         transcription = ""
         if result.get('segments'):
-            segment_texts = [seg.get('text', '').strip() for seg in result['segments'] if seg.get('text', '').strip()]
+            segment_texts = []
+            for seg in result['segments']:
+                text = seg.get('text', '').strip()
+                if text:
+                    segment_texts.append(text)
             transcription = " ".join(segment_texts).strip()
 
         # Calculate overall confidence
@@ -164,14 +168,14 @@ def process_audio_file(
                     'all_emotions': convert_to_native_types(dict(emotion_counts))
                 }
 
-        # Generate summary using Llama-3-8B
-        logger.info("Generating summary...")
+        # Generate summary using AWS SageMaker Qwen
+        logger.info("Generating summary via AWS SageMaker Qwen...")
         summary_json = None
         try:
-            from services.meralion_client import MERaLiONClient
+            from services.sagemaker_qwen_provider import SageMakerQwenProvider
 
-            # Initialize MERaLiON client for summarization
-            meralion_client = MERaLiONClient()
+            # Initialize SageMaker Qwen provider
+            qwen_provider = SageMakerQwenProvider()
 
             # Extract speaker segments for context (including emotion data)
             speaker_segments = [
@@ -184,22 +188,45 @@ def process_audio_file(
                 for seg in result.get('segments', [])
             ]
 
+            # Build speaker context for better summarization
+            speaker_context = ""
+            if speaker_segments:
+                for seg in speaker_segments:
+                    speaker_id = seg.get('speaker_id', 'Unknown')
+                    text = seg.get('text', '')
+                    emotion = seg.get('emotion', 'neutral')
+                    speaker_context += f"{speaker_id}: {text} (emotion: {emotion})\n"
+
             logger.info(f"Starting summarization with {len(speaker_segments) if speaker_segments else 0} speaker segments")
-            summary_result = meralion_client.summarize(
-                transcription=transcription,
-                speaker_segments=speaker_segments
-            )
-            logger.info(f"Summarization complete. Result keys: {summary_result.keys()}")
-            logger.info(f"Summary result: intention={bool(summary_result.get('intention'))}, conclusion={bool(summary_result.get('conclusion'))}, speaker_pov keys={list(summary_result.get('speaker_pov', {}).keys())}")
+
+            # Generate intention
+            intention = qwen_provider.summarize_intention(speaker_context or transcription)
+
+            # Generate conclusion
+            conclusion = qwen_provider.summarize_conclusion(speaker_context or transcription)
+
+            # Generate speaker POV for all speakers
+            speaker_pov = {}
+            unique_speakers = {}
+            if speaker_segments:
+                for seg in speaker_segments:
+                    speaker_id = seg.get('speaker_id', 'Unknown')
+                    if speaker_id not in unique_speakers:
+                        unique_speakers[speaker_id] = True
+
+                for speaker_id in unique_speakers.keys():
+                    pov = qwen_provider.summarize_speaker_pov(speaker_context or transcription, speaker_id)
+                    speaker_pov[speaker_id] = pov
 
             summary_json = {
-                'intention': summary_result.get('intention', ''),
-                'conclusion': summary_result.get('conclusion', ''),
-                'speaker_pov': summary_result.get('speaker_pov', {}),
-                'model': summary_result.get('model', 'meta-llama/Meta-Llama-3-8B-Instruct'),
-                'generated_at': summary_result.get('generated_at', '')
+                'intention': intention,
+                'conclusion': conclusion,
+                'speaker_pov': speaker_pov,
+                'model': 'Qwen3-235B (AWS SageMaker)',
+                'generated_at': ''
             }
-            logger.info(f"Created summary_json: {summary_json}")
+            logger.info(f"Summarization complete via SageMaker Qwen")
+            logger.info(f"Summary result: intention={bool(summary_json.get('intention'))}, conclusion={bool(summary_json.get('conclusion'))}, speaker_pov keys={list(summary_json.get('speaker_pov', {}).keys())}")
 
         except Exception as e:
             logger.warning(f"Summarization failed, continuing without summary: {e}")
@@ -208,7 +235,7 @@ def process_audio_file(
                 'intention': f"[Summary unavailable: {str(e)[:100]}]",
                 'conclusion': '',
                 'speaker_pov': {},
-                'model': 'meta-llama/Meta-Llama-3-8B-Instruct',
+                'model': 'Qwen3-235B (AWS SageMaker)',
                 'generated_at': ''
             }
 
@@ -219,6 +246,9 @@ def process_audio_file(
             'speaker_segments': convert_to_native_types(filtered_segments),
             'speaker_summary': convert_to_native_types(result.get('speakers', []))
         }
+
+        # Calculate processing duration
+        processing_duration = time.time() - start_time
 
         # Create processing result in database (synchronous)
         from database.models import ProcessingResult
@@ -233,6 +263,7 @@ def process_audio_file(
             emotion_confidence=emotion_confidence,
             summary=summary_json.get('intention', '') if summary_json else None,
             summary_json=summary_json,
+            processing_duration=processing_duration,
             model_versions={
                 "whisper": "openai/whisper-small",
                 "pyannote": "pyannote/speaker-diarization-3.1",
@@ -372,7 +403,7 @@ def process_vad_recording(
             db.commit()
 
         # Initialize audio processor
-        processor = EnhancedAudioProcessor(db_service=db_service)
+        processor = AudioProcessor(db_service=db_service)
 
         # Process audio with persistent speakers
         start_time = time.time()
@@ -388,10 +419,14 @@ def process_vad_recording(
         # Save processing results to database
         logger.info(f"Saving processing results to database for recording {recording_id}")
 
-        # Prepare transcription
+        # Prepare transcription (already cleaned in MERaLiONClient)
         transcription = ""
         if result.get('segments'):
-            segment_texts = [seg.get('text', '').strip() for seg in result['segments'] if seg.get('text', '').strip()]
+            segment_texts = []
+            for seg in result['segments']:
+                text = seg.get('text', '').strip()
+                if text:
+                    segment_texts.append(text)
             transcription = " ".join(segment_texts).strip()
 
         # Calculate overall confidence
@@ -425,6 +460,77 @@ def process_vad_recording(
                     'all_emotions': convert_to_native_types(dict(emotion_counts))
                 }
 
+        # Generate summary using AWS SageMaker Qwen
+        logger.info("Generating summary via AWS SageMaker Qwen...")
+        summary_json = None
+        try:
+            from services.sagemaker_qwen_provider import SageMakerQwenProvider
+
+            # Initialize SageMaker Qwen provider
+            qwen_provider = SageMakerQwenProvider()
+
+            # Extract speaker segments for context (including emotion data)
+            speaker_segments = [
+                {
+                    'speaker_id': seg.get('persistent_speaker_name') or seg.get('speaker_id'),
+                    'text': seg.get('text', ''),
+                    'emotion': seg.get('emotion', 'neutral'),
+                    'start_time': seg.get('start_time')
+                }
+                for seg in result.get('segments', [])
+            ]
+
+            # Build speaker context for better summarization
+            speaker_context = ""
+            if speaker_segments:
+                for seg in speaker_segments:
+                    speaker_id = seg.get('speaker_id', 'Unknown')
+                    text = seg.get('text', '')
+                    emotion = seg.get('emotion', 'neutral')
+                    speaker_context += f"{speaker_id}: {text} (emotion: {emotion})\n"
+
+            logger.info(f"Starting summarization with {len(speaker_segments) if speaker_segments else 0} speaker segments")
+
+            # Generate intention
+            intention = qwen_provider.summarize_intention(speaker_context or transcription)
+
+            # Generate conclusion
+            conclusion = qwen_provider.summarize_conclusion(speaker_context or transcription)
+
+            # Generate speaker POV for all speakers
+            speaker_pov = {}
+            unique_speakers = {}
+            if speaker_segments:
+                for seg in speaker_segments:
+                    speaker_id = seg.get('speaker_id', 'Unknown')
+                    if speaker_id not in unique_speakers:
+                        unique_speakers[speaker_id] = True
+
+                for speaker_id in unique_speakers.keys():
+                    pov = qwen_provider.summarize_speaker_pov(speaker_context or transcription, speaker_id)
+                    speaker_pov[speaker_id] = pov
+
+            summary_json = {
+                'intention': intention,
+                'conclusion': conclusion,
+                'speaker_pov': speaker_pov,
+                'model': 'Qwen3-235B (AWS SageMaker)',
+                'generated_at': ''
+            }
+            logger.info(f"Summarization complete via SageMaker Qwen")
+            logger.info(f"Summary result: intention={bool(summary_json.get('intention'))}, conclusion={bool(summary_json.get('conclusion'))}, speaker_pov keys={list(summary_json.get('speaker_pov', {}).keys())}")
+
+        except Exception as e:
+            logger.warning(f"Summarization failed, continuing without summary: {e}")
+            logger.error(f"Summarization exception details: {traceback.format_exc()}")
+            summary_json = {
+                'intention': f"[Summary unavailable: {str(e)[:100]}]",
+                'conclusion': '',
+                'speaker_pov': {},
+                'model': 'Qwen3-235B (AWS SageMaker)',
+                'generated_at': ''
+            }
+
         # Prepare diarization data (convert numpy types to native Python types)
         filtered_segments = [seg for seg in result.get('segments', []) if seg.get('text', '').strip()]
         diarization_data = {
@@ -432,6 +538,9 @@ def process_vad_recording(
             'speaker_segments': convert_to_native_types(filtered_segments),
             'speaker_summary': convert_to_native_types(result.get('speakers', []))
         }
+
+        # Calculate processing duration
+        processing_duration = time.time() - start_time
 
         # Create processing result in database (synchronous)
         from database.models import ProcessingResult
@@ -446,6 +555,7 @@ def process_vad_recording(
             emotion_confidence=emotion_confidence,
             summary=summary_json.get('intention', '') if summary_json else None,
             summary_json=summary_json,
+            processing_duration=processing_duration,
             model_versions={
                 "whisper": "openai/whisper-small",
                 "pyannote": "pyannote/speaker-diarization-3.1",

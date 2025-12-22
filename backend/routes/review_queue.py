@@ -119,7 +119,8 @@ async def get_review_audio(
     """
     try:
         service = ReviewQueueService(db_service)
-        audio_file_path = await service.get_review_audio(review_id)
+        # Pass segment_index to service to extract specific segment if provided
+        audio_file_path = await service.get_review_audio(review_id, segment_index=segment_index)
 
         # Return as file response
         return FileResponse(
@@ -143,14 +144,20 @@ async def enroll_from_review(
     db_service: DatabaseService = Depends(get_database_service)
 ):
     """
-    Enroll a new speaker using segments from a review queue item.
+    Enroll a new speaker using selected segments from a review queue item.
 
-    This extracts the speaker's segments from the recording and creates
-    a new persistent speaker profile.
+    Allows choosing which specific segments to include during speaker enrollment.
+    By default, all segments are included. Users can select specific segments
+    to exclude low-quality or irrelevant audio from the speaker profile.
     """
     try:
         service = ReviewQueueService(db_service)
-        result = await service.enroll_speaker_from_review(review_id, request.speaker_name)
+        result = await service.enroll_speaker_from_review(
+            review_id=review_id,
+            speaker_name=request.speaker_name,
+            use_all_segments=request.use_all_segments,
+            selected_segment_indices=request.selected_segment_indices
+        )
 
         return EnrollFromReviewResponse(
             success=True,

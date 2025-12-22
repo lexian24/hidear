@@ -102,11 +102,11 @@ async def upload_recording(
             detail="Unsupported file format. Please upload .wav, .mp3, .m4a, .flac, .ogg, or .webm"
         )
     
-    # Check file size (50MB limit)
-    max_size = 50 * 1024 * 1024
+    # Check file size (500MB limit)
+    max_size = 500 * 1024 * 1024
     file_content = await file.read()
     if len(file_content) > max_size:
-        raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB")
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 500MB")
     
     try:
         start_time = time.time()
